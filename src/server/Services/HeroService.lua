@@ -9,11 +9,14 @@ local ProgressionService = require(script.Parent.ProgressionService)
 local KnightRig = require(script.Parent.Parent.Heroes.KnightRig)
 local RangedRig = require(script.Parent.Parent.Heroes.RangedRig)
 
+local CombatDebugState = require(script.Parent.CombatDebugState)
+
 local HeroService = {}
 local activeHeroes = {}
 local heroesById = {}
 local connection = nil
 local heroFolder = nil
+local debugConnection = nil
 local rigFactories = {Knight = KnightRig.new, Ranged = RangedRig.new}
 
 local function interpolate(from, to, progress)
@@ -40,6 +43,10 @@ local function updateHero(hero, now)
 		return
 	end
 	if not owner then
+		return
+	end
+	if not CombatDebugState.IsHeroEnabled(hero.Id) then
+		if hero.Target then idle(hero) end
 		return
 	end
 	hero.Model:SetAttribute("Level", ProgressionService.GetHeroLevel(owner, hero.Id))
@@ -163,6 +170,11 @@ function HeroService.Start()
 	if connection then
 		return
 	end
+	debugConnection = CombatDebugState.Changed:Connect(function()
+		for _, hero in activeHeroes do
+			if not CombatDebugState.IsHeroEnabled(hero.Id) then idle(hero) end
+		end
+	end)
 	heroFolder = Instance.new("Folder")
 	heroFolder.Name = "HeroCavesHeroes"
 	heroFolder.Parent = workspace
@@ -178,6 +190,7 @@ function HeroService.Start()
 end
 
 function HeroService.Stop()
+	if debugConnection then debugConnection:Disconnect(); debugConnection = nil end
 	if connection then
 		connection:Disconnect()
 		connection = nil

@@ -6,6 +6,8 @@ local ProgressionMath = require(script.Parent.Parent.ProgressionMath)
 local EnemyService = {}
 local defeatedEvent = Instance.new("BindableEvent")
 EnemyService.Defeated = defeatedEvent.Event
+local changedEvent = Instance.new("BindableEvent")
+EnemyService.Changed = changedEvent.Event
 local activeEnemy = nil
 local enemyFolder = nil
 
@@ -34,6 +36,7 @@ function EnemyService.Remove()
 	if activeEnemy then
 		activeEnemy.Model:Destroy()
 		activeEnemy = nil
+		changedEvent:Fire()
 	end
 end
 
@@ -122,6 +125,7 @@ function EnemyService.Spawn(wave, isBoss)
 	}
 	updateDisplay(activeEnemy)
 	model.Parent = enemyFolder
+	changedEvent:Fire()
 	if GameConfig.DebugLogging then
 		print(string.format("[EnemyService] Spawned %s with %d HP", definition.Name, maxHealth))
 	end
@@ -146,6 +150,7 @@ function EnemyService.Damage(amount, sourceName)
 	end
 	enemy.Health = math.max(0, enemy.Health - math.floor(amount))
 	updateDisplay(enemy)
+	changedEvent:Fire()
 	if GameConfig.DebugLogging then
 		print(string.format("[CombatService] %s dealt %d damage", sourceName or "Server", math.floor(amount)))
 	end
@@ -157,6 +162,16 @@ function EnemyService.Damage(amount, sourceName)
 		-- Removal for replacement/timeout never fires this death-only signal.
 		defeatedEvent:Fire(enemy)
 	end
+	return true
+end
+
+-- Server-only HP reset. Boss deadline deliberately continues to run.
+function EnemyService.ResetHealth()
+	local enemy = activeEnemy
+	if not enemy or enemy.Health <= 0 or (enemy.IsBoss and time() >= enemy.Deadline) then return false end
+	enemy.Health = enemy.MaxHealth
+	updateDisplay(enemy)
+	changedEvent:Fire()
 	return true
 end
 

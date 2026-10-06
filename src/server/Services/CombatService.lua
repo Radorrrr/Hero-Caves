@@ -5,6 +5,8 @@ local EnemyConfig = require(ReplicatedStorage.Shared.EnemyConfig)
 local EnemyService = require(script.Parent.EnemyService)
 local ProgressionService = require(script.Parent.ProgressionService)
 
+local CombatDebugState = require(script.Parent.CombatDebugState)
+
 local CombatService = {}
 
 -- Server-only API. Captured target identity prevents hitting the next wave.
@@ -16,7 +18,7 @@ function CombatService.DamageEnemy(hero, target)
 	end
 	local definition = HeroConfig[hero.Id]
 	local owner = ProgressionService.GetCombatOwner()
-	if not definition or not owner or hero.Owner ~= owner then
+	if not definition or not owner or hero.Owner ~= owner or not CombatDebugState.IsHeroEnabled(hero.Id) then
 		return false
 	end
 	local body = target.Model.PrimaryPart

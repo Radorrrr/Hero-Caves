@@ -8,6 +8,7 @@ local EnemyService = require(script.Parent.EnemyService)
 local EconomyService = {}
 local balances = {}
 local started = false
+local goldAwarded = nil
 local goldMultiplierProvider = function() return 1 end
 
 local function initializePlayer(player)
@@ -35,8 +36,15 @@ function EconomyService.EarnGold(player, baseAmount)
 	if not ProgressionMath.IsValidAmount(baseAmount) then
 		return false
 	end
-	return EconomyService.AddGold(player,
+	local before = balances[player]
+	if before == nil then return false end
+	local success = EconomyService.AddGold(player,
 		ProgressionMath.RoundValue(baseAmount * goldMultiplierProvider(player)))
+	local awarded = balances[player] - before
+	if success and awarded > 0 and goldAwarded then
+		goldAwarded:FireClient(player, awarded)
+	end
+	return success, awarded
 end
 
 function EconomyService.CanAfford(player, amount)
@@ -68,6 +76,9 @@ function EconomyService.Start()
 		return
 	end
 	started = true
+	goldAwarded = Instance.new("RemoteEvent")
+	goldAwarded.Name = "HeroCavesGoldAwarded"
+	goldAwarded.Parent = ReplicatedStorage
 	Players.PlayerAdded:Connect(initializePlayer)
 	Players.PlayerRemoving:Connect(function(player)
 		balances[player] = nil

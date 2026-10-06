@@ -7,6 +7,8 @@ local ProgressionMath = require(script.Parent.Parent.ProgressionMath)
 local UpgradeEffects = require(script.Parent.Parent.UpgradeEffects)
 local EconomyService = require(script.Parent.EconomyService)
 
+local CombatDebugState = require(script.Parent.CombatDebugState)
+
 local ProgressionService = {}
 local playerHeroes = {}
 local lastPurchaseAt = {}
@@ -100,6 +102,7 @@ end
 local function publish(player)
 	local heroes = playerHeroes[player]
 	player:SetAttribute("GoldMultiplier", ProgressionService.GetGoldMultiplier(player))
+	local totalDPS = 0
 	for heroId, state in heroes do
 		local definition = HeroConfig[heroId]
 		local atMax = state.Level >= definition.MaxLevel
@@ -112,7 +115,15 @@ local function publish(player)
 		state.Replicated:SetAttribute("BossDamage", ProgressionService.GetHeroDamage(player, heroId, true) or 0)
 		state.Replicated:SetAttribute("NextLevelCost", cost)
 		state.Replicated:SetAttribute("AtMaxLevel", atMax)
-		state.Replicated:SetAttribute("AttackInterval", ProgressionService.GetHeroAttackInterval(player, heroId) or 0)
+		local interval = ProgressionService.GetHeroAttackInterval(player, heroId) or 0
+		local speed = interval > 0 and 1 / interval or 0
+		local dps = damage * speed
+		state.Replicated:SetAttribute("AttackInterval", interval)
+		state.Replicated:SetAttribute("AttackSpeed", speed)
+		state.Replicated:SetAttribute("DPS", dps)
+		local attackEnabled = state.Owned and CombatDebugState.IsHeroEnabled(heroId)
+		state.Replicated:SetAttribute("AttackEnabled", attackEnabled)
+		if attackEnabled then totalDPS += dps end
 		for upgradeId in milestoneIndex[heroId] do
 			state.Replicated.Upgrades:SetAttribute(upgradeId,
 				ProgressionService.GetUpgradeState(player, heroId, upgradeId))
@@ -123,6 +134,8 @@ local function publish(player)
 		player:SetAttribute(heroId .. "NextLevelCost", cost)
 		player:SetAttribute(heroId .. "AtMaxLevel", atMax)
 	end
+	player:SetAttribute("TotalDPS", totalDPS)
+	player:SetAttribute("CombatStatsRevision", (player:GetAttribute("CombatStatsRevision") or 0) + 1)
 end
 
 local function setCombatOwner(player)
@@ -266,6 +279,9 @@ function ProgressionService.Start()
 	end
 	validateConfig()
 	started = true
+	CombatDebugState.Changed:Connect(function()
+		for player in playerHeroes do publish(player) end
+	end)
 	EconomyService.SetGoldMultiplierProvider(ProgressionService.GetGoldMultiplier)
 	Players.PlayerAdded:Connect(initializePlayer)
 	Players.PlayerRemoving:Connect(function(player)

@@ -32,7 +32,7 @@ panel.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
 panel.BorderSizePixel = 0
 panel.Parent = gui
 local constraint = Instance.new("UISizeConstraint")
-constraint.MinSize = Vector2.new(300, 480)
+constraint.MinSize = Vector2.new(300, 590)
 constraint.MaxSize = Vector2.new(360, 760)
 constraint.Parent = panel
 local corner = Instance.new("UICorner")
@@ -83,18 +83,26 @@ local tabButtons = {}
 local title = label("Hero", 108, 26, 19)
 local levelLabel = label("Level", 141, 24, 17)
 local damageLabel = label("Damage", 169, 24, 17)
-local bonusLabel = label("GoldBonus", 197, 22, 14)
-local levelButton = button("LevelUp", 226)
-local feedback = label("PurchaseResult", 266, 24, 14)
+local speedLabel = label("AttackSpeed", 197, 22, 15)
+local dpsLabel = label("DPS", 223, 22, 15)
+local nextCostLabel = label("NextLevelCost", 249, 22, 14)
+local bonusLabel = label("GoldMultiplier", 275, 22, 14)
+local totalLabel = label("TotalDPS", 0, 60, 22, gui)
+totalLabel.AnchorPoint = Vector2.new(1, 0)
+totalLabel.Position = UDim2.new(1, -16, 0, 12)
+totalLabel.Size = UDim2.fromOffset(200, 60)
+totalLabel.TextXAlignment = Enum.TextXAlignment.Right
+local levelButton = button("LevelUp", 304)
+local feedback = label("PurchaseResult", 344, 24, 14)
 feedback.Text = ""
-local ownerLabel = label("CombatOwner", 295, 48, 13)
+local ownerLabel = label("CombatOwner", 373, 48, 13)
 ownerLabel.TextColor3 = Color3.fromRGB(180, 190, 210)
-local milestonesTitle = label("MilestonesTitle", 350, 24, 17)
+local milestonesTitle = label("MilestonesTitle", 428, 24, 17)
 milestonesTitle.Text = "Milestone upgrades"
 local list = Instance.new("ScrollingFrame")
 list.Name = "Milestones"
-list.Position = UDim2.fromOffset(8, 382)
-list.Size = UDim2.new(1, -16, 1, -394)
+list.Position = UDim2.fromOffset(8, 460)
+list.Size = UDim2.new(1, -16, 1, -472)
 list.BackgroundTransparency = 1
 list.BorderSizePixel = 0
 list.ScrollBarThickness = 6
@@ -157,7 +165,12 @@ local function render()
 	local unlockCost = data:GetAttribute("UnlockCost")
 	local maxLevel = data:GetAttribute("AtMaxLevel")
 	goldLabel.Text = "GOLD: " .. NumberFormatter.Format(gold)
-	bonusLabel.Text = "Gold earned x" .. tostring(player:GetAttribute("GoldMultiplier") or 1)
+	local multiplier = string.format("%.2f", player:GetAttribute("GoldMultiplier") or 1):gsub("0+$", ""):gsub("%.$", "")
+	bonusLabel.Text = "Gold Multiplier: x" .. multiplier
+	speedLabel.Text = owned and string.format("Attack Speed: %.2f attacks/s", data:GetAttribute("AttackSpeed") or 0) or ""
+	dpsLabel.Text = owned and ("DPS: " .. NumberFormatter.Format(data:GetAttribute("DPS"))) or ""
+	nextCostLabel.Text = owned and (maxLevel and "Next Level: Maximum level" or ("Next Level: " .. NumberFormatter.Format(cost) .. " Gold")) or ""
+	totalLabel.Text = "Total DPS\n" .. NumberFormatter.Format(player:GetAttribute("TotalDPS"))
 	local affordable = gold ~= nil and (owned and cost ~= nil and not maxLevel and gold >= cost
 		or not owned and unlockCost ~= nil and gold >= unlockCost)
 	title.Text = string.upper(definition.Name) .. " · " .. (owned and "OWNED" or (affordable and "AFFORDABLE" or "NOT AFFORDABLE"))
@@ -202,7 +215,7 @@ for index, id in HeroConfig.HeroOrder do
 		render()
 	end)
 end
-for _, name in {"Gold", "GoldMultiplier", "IsHeroCombatOwner"} do
+for _, name in {"Gold", "GoldMultiplier", "IsHeroCombatOwner", "TotalDPS"} do
 	player:GetAttributeChangedSignal(name):Connect(render)
 end
 for _, snapshot in heroSnapshots do
@@ -240,3 +253,5 @@ buyUpgrade.OnClientEvent:Connect(purchaseResult)
 rebuildMilestones()
 render()
 gui.Parent = playerGui
+require(script.Parent.GoldPopup).Start(gui)
+require(script.Parent.CombatDebugPanel).Start(gui)

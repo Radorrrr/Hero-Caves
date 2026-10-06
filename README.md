@@ -123,7 +123,7 @@ pending attacks/projectiles; all heroes wait for the next target.
 
 Health flashes and the visible attacks provide prototype hit feedback. With
 DebugLogging enabled, Output names the hero responsible for each impact.
-No floating-number/final VFX system is included.
+Gold gains now use temporary HUD notifications; no final combat VFX system is included.
 
 ### Archer milestones
 
@@ -195,7 +195,7 @@ and leaving transfers the roster to the remaining owner's owned heroes.
 
 All starting gold, levels and ownership overrides require server IsStudio()
 and Enabled=true. Starting levels also apply to a hero bought during a Studio
-test; production purchases always start at Level 1. There is no cheat remote.
+test; production purchases always start at Level 1. There is no gold/level cheat remote.
 Restore Enabled=false after testing.
 
 ## Gold and Knight leveling
@@ -321,7 +321,7 @@ Use Level 9 for the corresponding LOCKED check.
 At each other milestone, buy the relevant upgrade and compare damage or gold
 before/after. Damage is rounded once after modifiers, so displayed integer
 damage ratios can differ slightly from the nominal multiplier. Treasure Hunter
-should show `Gold earned x1.25` and change a Boss 5 reward from 44 to 55.
+should show `Gold Multiplier: x1.25` and change a Boss 5 reward from 44 to 55.
 Early enemies die immediately at high levels; inspect the replicated damage
 stats alongside combat Output. High-level damage upgrades can be bought in
 any order once unlocked; earlier upgrades are not prerequisites.
@@ -332,7 +332,7 @@ still affects that player's own rewards immediately.
 
 These shortcuts are gated on the server by `RunService:IsStudio()` and the
 Enabled flag. They are ignored in production even when the flag is left on.
-There is no test remote or client-settable level/gold command. Set Enabled back
+There is no client-settable level/gold command; combat controls are Studio-only. Set Enabled back
 to false after testing. Normal defaults remain 0 gold, Level 1, no upgrades.
 
 There is no saving: leaving/rejoining resets personal gold, hero ownership,
@@ -346,7 +346,8 @@ Each active hero exposes `HeroId`, `AttackPhase`, `OwnerUserId`, `Level` and
 `KnightDamage`, `KnightNextLevelCost`, `KnightAtMaxLevel` and
 `GoldMultiplier` and `IsHeroCombatOwner`. Generic hero snapshots live under
 `Player.HeroProgression.<HeroId>` with `Owned`, `UnlockCost`, `Level`, `Damage`, `BossDamage`,
-`NextLevelCost`, `AtMaxLevel` and `AttackInterval` attributes. Its
+`NextLevelCost`, `AtMaxLevel`, `AttackInterval`, `AttackSpeed`, `DPS` and
+`AttackEnabled` attributes. Player `TotalDPS` is the server-calculated normal sum. Its
 `Upgrades` child has each upgrade ID as an attribute holding its state.
 The Workspace owner attribute is `HeroCombatOwnerUserId`. These are replicated
 display/debug data; gameplay remains on the server.
@@ -369,3 +370,100 @@ a procedural shoulder pivot, not a Humanoid or uploaded animation. It has no
 walking, IK or physics-based sword collision; damage is timed and targeted.
 Server-replicated poses and HP may appear slightly offset under network lag.
 Slot spacing, visual scale and swing angles need tuning together if changed.
+
+
+## Combat information and Studio tools (before Phase 6)
+
+Each owned hero's selected tab shows level, effective normal damage, attack speed
+in attacks/second, normal DPS, and the next level's gold cost. The top-right HUD
+shows Total DPS. The balance remains visible, separately from **Gold Multiplier**.
+The client only formats replicated values; it has no balancing/reward formulas.
+
+The server uses the existing upgraded damage/interval calculations:
+
+- `AttackSpeed = 1 / EffectiveAttackInterval`.
+- `DPS = EffectiveNormalDamage / EffectiveAttackInterval`.
+- `TotalDPS = sum(DPS)` for the player's owned heroes with attacks enabled.
+- Boss-only damage bonuses never enter normal Damage/DPS/Total DPS.
+- Gold Multiplier is the product of purchased gold effects on owned heroes.
+  It starts at x1; Knight Treasure Hunter and Mage Alchemical Fortune combine
+  to x1.5625, displayed as x1.56 (display rounding only).
+
+The normal HUD describes your personal roster. As in Phase 5, only the combat
+owner's roster fights in the shared scene; the existing ownership explanation
+remains visible. The debug panel instead describes the current scene owner.
+DPS is a theoretical attack-rate stat, not a measurement of kills per second;
+wave gaps, overkill, initial anticipation and boss timeouts affect actual output.
+Per-hero DPS remains visible during debug pause; Total DPS excludes paused heroes.
+
+For a rewarded death, EconomyService applies the player's gold multiplier,
+rounds and caps the result, and sends the **actual balance increase** through
+`ReplicatedStorage.HeroCavesGoldAwarded`. A client `+… Gold` notification uses
+NumberFormatter, waits briefly, then moves/fades and destroys itself. At most
+five notifications remain active. Raw grants, starting gold, purchases, enemy
+replacement, boss timeout and HP reset do not produce reward notifications.
+At the gold cap no positive increase means no notification. For example, Boss 5
+awards 44 normally, 55 at x1.25, or 69 at x1.5625, provided there is cap headroom.
+
+### Enable the Studio debug panel
+
+Set `GameConfig.StudioTesting.Enabled = true`, sync all source, and restart Play
+in Roblox Studio. Optional testing shortcuts remain available, for example:
+
+```lua
+Enabled = true,
+StartingGold = 1500,
+StartingHeroLevels = {Knight = 1, Archer = 1, Mage = 1},
+StartingOwnedHeroes = {Archer = true, Mage = true},
+```
+
+The scrollable panel beneath Total DPS provides:
+
+- Pause/Resume ALL attacks; individual Knight/Archer/Mage ON/OFF selections persist
+  through a global pause. Controls affect the shared scene for all Studio clients.
+- Reset current enemy HP to MaxHealth. Wave, ownership, levels, upgrades, rewards
+  and the boss deadline are unchanged. An absent/dead/expired enemy is not revived.
+- The scene owner's hero levels, normal damage, interval, attacks/second, DPS and
+  effective enabled status, plus wave, HP/max HP, boss flag, gold multiplier and total.
+
+Switching attacks off immediately cancels windups and active projectiles. A
+second guard in CombatService rejects disabled impacts. Models remain visible;
+resuming starts a fresh attack under the existing cooldown with the same single
+HeroService dispatcher. Turning an unowned hero ON does not grant ownership.
+Debug settings are shared only for the current server session and do not save.
+
+Both server controls/snapshots and the client panel require **IsStudio AND
+Enabled**. Production creates neither debug folder nor control remote. The
+server rechecks this gate on each request, accepts only exact action/ID/boolean
+payloads, and rate-limits controls to one per player every 0.15s. Restore
+Enabled=false after testing. No remote can set damage, levels, gold or upgrades.
+
+Stat snapshots update on purchases, progression/owner changes and debug controls.
+Debug enemy snapshots update on spawn, removal, damage or reset. Reward events
+occur on awards; these additions do not send stat remotes every frame.
+
+### Verification and manual Studio checks
+
+Standalone Luau simulations using real application modules and mocked Roblox
+APIs passed 21 scenarios: existing combat/waves/bosses/shop/security/multiplayer,
+new server-derived DPS and totals, all relevant upgrades, boss exclusion,
+combined gold rewards, gold cap, notification formatting/cleanup, immediate
+projectile cancellation, disabled damage guards, repeated pause/resume,
+normal/boss HP reset and Studio/production gating. All Luau source compiles;
+Rojo sourcemap/require paths are validated. These checks do not replace Studio
+rendering, real TweenService timing or replication tests.
+
+In Studio, verify each owned tab's stats, buy Quick Draw (0.70 -> 0.56s;
+1.43 -> 1.79 attacks/s), damage/global/cross upgrades and both gold upgrades.
+Compare Total DPS to the unrounded replicated DPS sum (separately rounded HUD
+numbers can differ slightly). Observe normal/boss reward popups with gold cap
+headroom. Toggle Archer while an arrow is in flight, pause all, reset damaged
+normal/boss HP, then resume repeatedly: no canceled hit, duplicate attack loop,
+extra reward or wave change should result. With Enabled=false there should be
+no debug panel or remote. Test two clients: debug stats follow the combat owner
+and personal HUD/rewards remain personal after ownership handoff.
+
+New source modules: `src/client/GoldPopup.lua`,
+`src/client/CombatDebugPanel.lua`, `src/server/Services/CombatDebugState.lua`,
+and `src/server/Services/CombatDebugService.lua`.
+Phase 6, persistence, extra heroes and final art remain outside this change.
