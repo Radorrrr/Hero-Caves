@@ -5,6 +5,7 @@ local HeroConfig = require(ReplicatedStorage.Shared.HeroConfig)
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local EnemyService = require(script.Parent.EnemyService)
 local CombatService = require(script.Parent.CombatService)
+local ProgressionService = require(script.Parent.ProgressionService)
 local KnightRig = require(script.Parent.Parent.Heroes.KnightRig)
 
 local HeroService = {}
@@ -28,6 +29,17 @@ local function idle(hero)
 end
 
 local function updateHero(hero, now)
+	local owner = ProgressionService.GetCombatOwner()
+	if hero.Owner ~= owner then
+		idle(hero)
+		hero.Owner = owner
+		hero.Model:SetAttribute("OwnerUserId", owner and owner.UserId or 0)
+	end
+	if not owner then
+		return
+	end
+	hero.Model:SetAttribute("Level", ProgressionService.GetKnightLevel(owner))
+	hero.Model:SetAttribute("Damage", ProgressionService.GetKnightDamage(owner))
 	local target = EnemyService.GetActiveEnemy()
 	if not target or not target.Model.Parent or target.Health <= 0
 		or (target.IsBoss and now >= target.Deadline) then
@@ -99,7 +111,7 @@ function HeroService.Start()
 		return
 	end
 	local config = HeroConfig.Knight
-	assert(config.AttackInterval > 0 and config.Damage > 0, "Invalid Knight combat configuration")
+	assert(config.AttackInterval > 0 and config.BaseDamage > 0, "Invalid Knight combat configuration")
 	local animation = config.Animation
 	for _, duration in {animation.WindupDuration, animation.SwingDuration,
 		animation.FollowThroughDuration, animation.RecoveryDuration} do

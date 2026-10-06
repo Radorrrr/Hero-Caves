@@ -2,6 +2,9 @@ return {
 	BaseHealth = 20,
 	HealthGrowth = 1.18,
 	BossHealthMultiplier = 10,
+	BaseGold = 5,
+	GoldGrowth = 1.15,
+	BossGoldMultiplier = 5,
 	Normal = {
 		Name = "Slime",
 		Color = Color3.fromRGB(95, 210, 115),

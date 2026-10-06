@@ -1,8 +1,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local EnemyConfig = require(ReplicatedStorage.Shared.EnemyConfig)
+local ProgressionMath = require(script.Parent.Parent.ProgressionMath)
 
 local EnemyService = {}
+local defeatedEvent = Instance.new("BindableEvent")
+EnemyService.Defeated = defeatedEvent.Event
 local activeEnemy = nil
 local enemyFolder = nil
 
@@ -52,6 +55,8 @@ function EnemyService.Spawn(wave, isBoss)
 	model:SetAttribute("Wave", wave)
 	model:SetAttribute("IsBoss", isBoss)
 	model:SetAttribute("MaxHealth", maxHealth)
+	local goldReward = ProgressionMath.GetGoldReward(wave, isBoss)
+	model:SetAttribute("GoldReward", goldReward)
 
 	local body = Instance.new("Part")
 	body.Name = "Body"
@@ -108,6 +113,8 @@ function EnemyService.Spawn(wave, isBoss)
 		Health = maxHealth,
 		MaxHealth = maxHealth,
 		IsBoss = isBoss,
+		Wave = wave,
+		GoldReward = goldReward,
 		Deadline = isBoss and (time() + GameConfig.BossTimeLimit) or nil,
 		NameLabel = nameLabel,
 		HealthLabel = healthLabel,
@@ -147,6 +154,8 @@ function EnemyService.Damage(amount)
 			print("[EnemyService] Enemy defeated")
 		end
 		EnemyService.Remove()
+		-- Removal for replacement/timeout never fires this death-only signal.
+		defeatedEvent:Fire(enemy)
 	end
 	return true
 end

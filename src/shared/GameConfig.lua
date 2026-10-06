@@ -4,4 +4,8 @@ return {
 	BossEveryWaves = 5,
 	BossTimeLimit = 30,
 	DebugLogging = true,
+	Economy = {
+		MaxGold = 1000000000000,
+		PurchaseCooldown = 0.25,
+	},
 }

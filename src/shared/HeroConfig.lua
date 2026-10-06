@@ -1,7 +1,11 @@
 return {
 	Knight = {
 		Name = "Knight",
-		Damage = 20,
+		BaseDamage = 20,
+		DamageGrowth = 1.08,
+		BaseLevelCost = 10,
+		LevelCostGrowth = 1.12,
+		MaxLevel = 200,
 		-- Minimum time between attack starts, including animation and cooldown.
 		AttackInterval = 1.3,
 		SlotOffset = Vector3.new(0, -1.6, 5.3),
