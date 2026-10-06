@@ -1,0 +1,1 @@
+-- The foundation is server-authoritative; the enemy BillboardGui replicates automatically.
