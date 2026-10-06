@@ -12,6 +12,7 @@ return {
 	StudioTesting = {
 		Enabled = false,
 		StartingGold = 1000000000000,
-		StartingHeroLevels = {Knight = 1},
+		StartingHeroLevels = {Knight = 1, Archer = 1, Mage = 1},
+		StartingOwnedHeroes = {Archer = false, Mage = false},
 	},
 }

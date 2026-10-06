@@ -11,7 +11,7 @@ function KnightRig.new(config, parent)
 
 	local model = Instance.new("Model")
 	model.Name = config.Name
-	model:SetAttribute("HeroId", "Knight")
+	model:SetAttribute("HeroId", config.HeroId)
 	self.Model = model
 	local body = Instance.new("Folder")
 	body.Name = "Body"

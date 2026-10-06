@@ -24,7 +24,7 @@ function CombatService.DamageEnemy(hero, target)
 	if not damage then
 		return false
 	end
-	local applied = EnemyService.Damage(damage)
+	local applied = EnemyService.Damage(damage, definition.Name)
 	if applied and body and body.Parent then
 		body.Color = HeroConfig.Impact.FlashColor
 		local enemyDefinition = target.IsBoss and EnemyConfig.Boss or EnemyConfig.Normal

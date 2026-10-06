@@ -134,7 +134,7 @@ function EnemyService.UpdateDisplay()
 	end
 end
 
-function EnemyService.Damage(amount)
+function EnemyService.Damage(amount, sourceName)
 	local enemy = activeEnemy
 	if not enemy or type(amount) ~= "number" or amount <= 0
 		or amount ~= amount or amount == math.huge then
@@ -147,7 +147,7 @@ function EnemyService.Damage(amount)
 	enemy.Health = math.max(0, enemy.Health - math.floor(amount))
 	updateDisplay(enemy)
 	if GameConfig.DebugLogging then
-		print(string.format("[CombatService] Enemy took %d damage", math.floor(amount)))
+		print(string.format("[CombatService] %s dealt %d damage", sourceName or "Server", math.floor(amount)))
 	end
 	if enemy.Health == 0 then
 		if GameConfig.DebugLogging then

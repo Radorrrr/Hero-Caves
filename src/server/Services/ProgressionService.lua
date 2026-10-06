@@ -24,6 +24,9 @@ local function validateConfig()
 		local definition = ProgressionMath.GetHeroDefinition(heroId)
 		if definition then
 			assert(validId(heroId), "Invalid hero ID")
+			assert(definition.HeroId == heroId, "HeroId must match its config key")
+			assert(ProgressionMath.IsValidAmount(definition.UnlockCost), "Invalid hero unlock cost")
+			assert(type(definition.OwnedByDefault) == "boolean", "Missing default ownership")
 			table.insert(heroIds, heroId)
 			milestoneIndex[heroId] = {}
 			assert(ProgressionMath.IsValidAmount(definition.MaxLevel) and definition.MaxLevel >= 1, "Invalid maximum level")
@@ -57,15 +60,20 @@ function ProgressionService.GetHeroLevel(player, heroId)
 	return state and state.Level or nil
 end
 
+function ProgressionService.OwnsHero(player, heroId)
+	local state = getState(player, heroId)
+	return state ~= nil and state.Owned == true
+end
+
 function ProgressionService.GetHeroDamage(player, heroId, isBoss)
 	local state = getState(player, heroId)
-	return state and ProgressionMath.GetHeroDamage(heroId, state.Level,
+	return state and state.Owned and ProgressionMath.GetHeroDamage(heroId, state.Level,
 		UpgradeEffects.Calculate(playerHeroes[player], heroId), isBoss) or nil
 end
 
 function ProgressionService.GetHeroAttackInterval(player, heroId)
 	local state = getState(player, heroId)
-	return state and ProgressionMath.GetAttackInterval(heroId,
+	return state and state.Owned and ProgressionMath.GetAttackInterval(heroId,
 		UpgradeEffects.Calculate(playerHeroes[player], heroId)) or nil
 end
 
@@ -80,6 +88,9 @@ function ProgressionService.GetUpgradeState(player, heroId, upgradeId)
 	if not state or not upgrade then
 		return nil
 	end
+	if not state.Owned then
+		return "Locked"
+	end
 	if state.Upgrades[upgradeId] then
 		return "Purchased"
 	end
@@ -93,13 +104,15 @@ local function publish(player)
 		local definition = HeroConfig[heroId]
 		local atMax = state.Level >= definition.MaxLevel
 		local cost = atMax and 0 or ProgressionMath.GetHeroLevelCost(heroId, state.Level)
-		local damage = ProgressionService.GetHeroDamage(player, heroId, false)
+		local damage = ProgressionService.GetHeroDamage(player, heroId, false) or 0
+		state.Replicated:SetAttribute("Owned", state.Owned)
+		state.Replicated:SetAttribute("UnlockCost", definition.UnlockCost)
 		state.Replicated:SetAttribute("Level", state.Level)
 		state.Replicated:SetAttribute("Damage", damage)
-		state.Replicated:SetAttribute("BossDamage", ProgressionService.GetHeroDamage(player, heroId, true))
+		state.Replicated:SetAttribute("BossDamage", ProgressionService.GetHeroDamage(player, heroId, true) or 0)
 		state.Replicated:SetAttribute("NextLevelCost", cost)
 		state.Replicated:SetAttribute("AtMaxLevel", atMax)
-		state.Replicated:SetAttribute("AttackInterval", ProgressionService.GetHeroAttackInterval(player, heroId))
+		state.Replicated:SetAttribute("AttackInterval", ProgressionService.GetHeroAttackInterval(player, heroId) or 0)
 		for upgradeId in milestoneIndex[heroId] do
 			state.Replicated.Upgrades:SetAttribute(upgradeId,
 				ProgressionService.GetUpgradeState(player, heroId, upgradeId))
@@ -120,6 +133,15 @@ local function setCombatOwner(player)
 	end
 end
 
+local function startingLevel(heroId)
+	local testing = GameConfig.StudioTesting
+	local requested = RunService:IsStudio() and testing.Enabled and testing.StartingHeroLevels[heroId]
+	if ProgressionMath.IsValidAmount(requested) and requested >= 1 then
+		return math.min(requested, HeroConfig[heroId].MaxLevel)
+	end
+	return 1
+end
+
 local function initializePlayer(player)
 	if playerHeroes[player] then
 		return
@@ -129,21 +151,17 @@ local function initializePlayer(player)
 	local heroes = {}
 	playerHeroes[player] = heroes
 	for _, heroId in heroIds do
-		local level = 1
 		local testing = GameConfig.StudioTesting
-		if RunService:IsStudio() and testing.Enabled then
-			local requested = testing.StartingHeroLevels[heroId]
-			if ProgressionMath.IsValidAmount(requested) and requested >= 1 then
-				level = math.min(requested, HeroConfig[heroId].MaxLevel)
-			end
-		end
+		local owned = HeroConfig[heroId].OwnedByDefault
+			or (RunService:IsStudio() and testing.Enabled and testing.StartingOwnedHeroes[heroId] == true)
 		local replicated = Instance.new("Folder")
 		replicated.Name = heroId
 		local upgrades = Instance.new("Folder")
 		upgrades.Name = "Upgrades"
 		upgrades.Parent = replicated
 		replicated.Parent = folder
-		heroes[heroId] = {Level = level, Upgrades = {}, Replicated = replicated}
+		heroes[heroId] = {Owned = owned, Level = owned and startingLevel(heroId) or 1,
+			Upgrades = {}, Replicated = replicated}
 	end
 	publish(player)
 	folder.Parent = player
@@ -178,6 +196,9 @@ function ProgressionService.BuyHeroLevel(player, heroId)
 		return false, "InvalidHero"
 	end
 	local state = getState(player, heroId)
+	if not state.Owned then
+		return false, "NotOwned"
+	end
 	if state.Level >= HeroConfig[heroId].MaxLevel then
 		return false, "MaxLevel"
 	end
@@ -202,6 +223,9 @@ function ProgressionService.BuyUpgrade(player, heroId, upgradeId)
 	if not validId(upgradeId) or not milestoneIndex[heroId][upgradeId] then
 		return false, "InvalidUpgrade"
 	end
+	if not ProgressionService.OwnsHero(player, heroId) then
+		return false, "NotOwned"
+	end
 	local status = ProgressionService.GetUpgradeState(player, heroId, upgradeId)
 	if status ~= "Available" then
 		return false, status == "Purchased" and "AlreadyPurchased" or "Locked"
@@ -213,6 +237,27 @@ function ProgressionService.BuyUpgrade(player, heroId, upgradeId)
 	getState(player, heroId).Upgrades[upgradeId] = true
 	publish(player) -- Refresh all heroes, including targets of global/cross-hero effects.
 	return true, "UpgradePurchased"
+end
+
+function ProgressionService.BuyHero(player, heroId)
+	local allowed, reason = beginPurchase(player)
+	if not allowed then
+		return false, reason
+	end
+	if not validId(heroId) or not getState(player, heroId) then
+		return false, "InvalidHero"
+	end
+	local state = getState(player, heroId)
+	if state.Owned then
+		return false, "AlreadyOwned"
+	end
+	if not EconomyService.SpendGold(player, HeroConfig[heroId].UnlockCost) then
+		return false, "NotEnoughGold"
+	end
+	state.Owned = true
+	state.Level = startingLevel(heroId)
+	publish(player)
+	return true, "HeroPurchased"
 end
 
 function ProgressionService.Start()
@@ -258,6 +303,7 @@ function ProgressionService.Start()
 		end)
 	end
 	remote("BuyHeroLevel", 1, ProgressionService.BuyHeroLevel)
+	remote("BuyHero", 1, ProgressionService.BuyHero)
 	remote("BuyUpgrade", 2, ProgressionService.BuyUpgrade)
 	remotes.Parent = ReplicatedStorage
 end

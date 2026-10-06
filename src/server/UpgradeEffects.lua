@@ -22,7 +22,7 @@ function UpgradeEffects.Calculate(heroStates, targetHeroId)
 	for sourceHeroId, state in heroStates do
 		local definition = HeroConfig[sourceHeroId]
 		for _, upgrade in definition.Milestones or {} do
-			if state.Upgrades[upgrade.Id] then
+			if state.Owned and state.Upgrades[upgrade.Id] then
 				local effect = upgrade.Effect
 				local value = effect.Value
 				if effect.Type == "HeroDamageMultiplier" and sourceHeroId == targetHeroId then
