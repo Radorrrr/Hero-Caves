@@ -38,8 +38,8 @@ local function updateHero(hero, now)
 	if not owner then
 		return
 	end
-	hero.Model:SetAttribute("Level", ProgressionService.GetKnightLevel(owner))
-	hero.Model:SetAttribute("Damage", ProgressionService.GetKnightDamage(owner))
+	hero.Model:SetAttribute("Level", ProgressionService.GetHeroLevel(owner, hero.Id))
+	hero.Model:SetAttribute("Damage", ProgressionService.GetHeroDamage(owner, hero.Id, false))
 	local target = EnemyService.GetActiveEnemy()
 	if not target or not target.Model.Parent or target.Health <= 0
 		or (target.IsBoss and now >= target.Deadline) then
@@ -65,11 +65,14 @@ local function updateHero(hero, now)
 		end
 		hero.Target = target
 		hero.AttackStartedAt = now
-		hero.NextAttackAt = now + math.max(hero.Config.AttackInterval, animationEnd)
+		local interval = ProgressionService.GetHeroAttackInterval(owner, hero.Id)
+		-- Scale the pose timeline too, so faster attacks keep their impact in sync.
+		hero.AnimationSpeed = hero.Config.AttackInterval / interval
+		hero.NextAttackAt = now + math.max(interval, animationEnd / hero.AnimationSpeed)
 		hero.Impacted = false
 	end
 
-	local elapsed = now - hero.AttackStartedAt
+	local elapsed = (now - hero.AttackStartedAt) * hero.AnimationSpeed
 	if elapsed < animation.WindupDuration then
 		hero.Model:SetAttribute("AttackPhase", "Windup")
 		hero.Rig:SetPose(interpolate(animation.IdleAngle, animation.WindupAngle,
@@ -110,8 +113,9 @@ function HeroService.Start()
 	if connection then
 		return
 	end
-	local config = HeroConfig.Knight
-	assert(config.AttackInterval > 0 and config.BaseDamage > 0, "Invalid Knight combat configuration")
+	local heroId = HeroConfig.StartingHeroId
+	local config = HeroConfig[heroId]
+	assert(config.AttackInterval > 0 and config.BaseDamage > 0, "Invalid hero combat configuration")
 	local animation = config.Animation
 	for _, duration in {animation.WindupDuration, animation.SwingDuration,
 		animation.FollowThroughDuration, animation.RecoveryDuration} do
@@ -120,9 +124,11 @@ function HeroService.Start()
 	heroFolder = Instance.new("Folder")
 	heroFolder.Name = "HeroCavesHeroes"
 	heroFolder.Parent = workspace
-	local rig = rigFactories.Knight(config, heroFolder)
+	local factory = rigFactories[heroId]
+	assert(factory, "No rig factory for starting hero")
+	local rig = factory(config, heroFolder)
 	rig:SetFacing(GameConfig.EnemySpawnPosition + config.SlotOffset, GameConfig.EnemySpawnPosition)
-	local hero = {Id = "Knight", Config = config, Rig = rig, Model = rig.Model, NextAttackAt = time()}
+	local hero = {Id = heroId, Config = config, Rig = rig, Model = rig.Model, NextAttackAt = time()}
 	idle(hero)
 	table.insert(activeHeroes, hero)
 	connection = RunService.Heartbeat:Connect(function()
@@ -132,7 +138,7 @@ function HeroService.Start()
 		end
 	end)
 	if GameConfig.DebugLogging then
-		print("[HeroService] Spawned Knight; procedural combat active")
+		print("[HeroService] Spawned " .. config.Name .. "; procedural combat active")
 	end
 end
 

@@ -11,25 +11,43 @@ function ProgressionMath.IsValidAmount(value)
 		and value == math.floor(value)
 end
 
-local function scaledInteger(base, growth, exponent, multiplier)
-	local value = base * growth ^ exponent * (multiplier or 1)
+function ProgressionMath.GetHeroDefinition(heroId)
+	if type(heroId) ~= "string" then
+		return nil
+	end
+	local definition = HeroConfig[heroId]
+	return type(definition) == "table" and definition.BaseDamage and definition or nil
+end
+
+function ProgressionMath.RoundValue(value)
 	return math.floor(math.min(value, GameConfig.Economy.MaxGold) + 0.5)
 end
 
 function ProgressionMath.GetGoldReward(wave, isBoss)
-	return scaledInteger(EnemyConfig.BaseGold, EnemyConfig.GoldGrowth, wave - 1,
-		isBoss and EnemyConfig.BossGoldMultiplier or 1)
+	return ProgressionMath.RoundValue(EnemyConfig.BaseGold * EnemyConfig.GoldGrowth ^ (wave - 1)
+		* (isBoss and EnemyConfig.BossGoldMultiplier or 1))
 end
 
-function ProgressionMath.GetKnightDamage(level)
-	-- Future upgrade modifiers can be applied here before the final rounding.
-	local knight = HeroConfig.Knight
-	return scaledInteger(knight.BaseDamage, knight.DamageGrowth, level - 1)
+function ProgressionMath.GetHeroDamage(heroId, level, effects, isBoss)
+	local hero = ProgressionMath.GetHeroDefinition(heroId)
+	local value = hero.BaseDamage * hero.DamageGrowth ^ (level - 1)
+	if effects then
+		value *= effects.HeroDamage * effects.GlobalDamage * effects.SpecificDamage
+		if isBoss then
+			value *= effects.BossDamage
+		end
+	end
+	return ProgressionMath.RoundValue(value)
 end
 
-function ProgressionMath.GetKnightLevelCost(level)
-	local knight = HeroConfig.Knight
-	return scaledInteger(knight.BaseLevelCost, knight.LevelCostGrowth, level - 1)
+function ProgressionMath.GetHeroLevelCost(heroId, level)
+	local hero = ProgressionMath.GetHeroDefinition(heroId)
+	return ProgressionMath.RoundValue(hero.BaseLevelCost * hero.LevelCostGrowth ^ (level - 1))
+end
+
+function ProgressionMath.GetAttackInterval(heroId, effects)
+	local hero = ProgressionMath.GetHeroDefinition(heroId)
+	return hero.AttackInterval / (effects and effects.AttackSpeed or 1)
 end
 
 return ProgressionMath

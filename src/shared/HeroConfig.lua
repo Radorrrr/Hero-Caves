@@ -1,4 +1,5 @@
 return {
+	StartingHeroId = "Knight",
 	Knight = {
 		Name = "Knight",
 		BaseDamage = 20,
@@ -6,6 +7,38 @@ return {
 		BaseLevelCost = 10,
 		LevelCostGrowth = 1.12,
 		MaxLevel = 200,
+		Milestones = {
+			{
+				Id = "SharpenedBlade", Level = 10, Name = "Sharpened Blade",
+				Description = "This hero's damage x2", Cost = 100,
+				Effect = {Type = "HeroDamageMultiplier", Value = 2},
+			},
+			{
+				Id = "KnightTraining", Level = 25, Name = "Knight Training",
+				Description = "This hero's damage x2", Cost = 1000,
+				Effect = {Type = "HeroDamageMultiplier", Value = 2},
+			},
+			{
+				Id = "TreasureHunter", Level = 50, Name = "Treasure Hunter",
+				Description = "Your gold earned x1.25", Cost = 10000,
+				Effect = {Type = "GoldMultiplier", Value = 1.25},
+			},
+			{
+				Id = "SwordMastery", Level = 100, Name = "Sword Mastery",
+				Description = "This hero's damage x5", Cost = 1000000,
+				Effect = {Type = "HeroDamageMultiplier", Value = 5},
+			},
+			{
+				Id = "BattleInspiration", Level = 150, Name = "Battle Inspiration",
+				Description = "All your heroes' damage x1.25", Cost = 100000000,
+				Effect = {Type = "GlobalHeroDamageMultiplier", Value = 1.25},
+			},
+			{
+				Id = "LegendaryKnight", Level = 200, Name = "Legendary Knight",
+				Description = "This hero's damage x10", Cost = 10000000000,
+				Effect = {Type = "HeroDamageMultiplier", Value = 10},
+			},
+		},
 		-- Minimum time between attack starts, including animation and cooldown.
 		AttackInterval = 1.3,
 		SlotOffset = Vector3.new(0, -1.6, 5.3),

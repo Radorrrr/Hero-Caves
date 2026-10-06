@@ -20,7 +20,7 @@ function CombatService.DamageEnemy(hero, target)
 		return false
 	end
 	local body = target.Model.PrimaryPart
-	local damage = ProgressionService.GetKnightDamage(owner)
+	local damage = ProgressionService.GetHeroDamage(owner, hero.Id, target.IsBoss)
 	if not damage then
 		return false
 	end

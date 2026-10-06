@@ -8,4 +8,10 @@ return {
 		MaxGold = 1000000000000,
 		PurchaseCooldown = 0.25,
 	},
+	-- Ignored outside Studio, even if accidentally left enabled.
+	StudioTesting = {
+		Enabled = false,
+		StartingGold = 1000000000000,
+		StartingHeroLevels = {Knight = 1},
+	},
 }

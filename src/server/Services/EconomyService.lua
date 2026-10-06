@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local ProgressionMath = require(script.Parent.Parent.ProgressionMath)
@@ -7,16 +8,35 @@ local EnemyService = require(script.Parent.EnemyService)
 local EconomyService = {}
 local balances = {}
 local started = false
+local goldMultiplierProvider = function() return 1 end
 
 local function initializePlayer(player)
 	if balances[player] == nil then
-		balances[player] = 0
-		player:SetAttribute("Gold", 0)
+		local testing = GameConfig.StudioTesting
+		local startingGold = 0
+		if RunService:IsStudio() and testing.Enabled and ProgressionMath.IsValidAmount(testing.StartingGold) then
+			startingGold = testing.StartingGold
+		end
+		balances[player] = startingGold
+		player:SetAttribute("Gold", startingGold)
 	end
 end
 
 function EconomyService.GetGold(player)
 	return balances[player]
+end
+
+function EconomyService.SetGoldMultiplierProvider(provider)
+	assert(type(provider) == "function", "Gold multiplier provider must be a function")
+	goldMultiplierProvider = provider
+end
+
+function EconomyService.EarnGold(player, baseAmount)
+	if not ProgressionMath.IsValidAmount(baseAmount) then
+		return false
+	end
+	return EconomyService.AddGold(player,
+		ProgressionMath.RoundValue(baseAmount * goldMultiplierProvider(player)))
 end
 
 function EconomyService.CanAfford(player, amount)
@@ -62,7 +82,7 @@ function EconomyService.Start()
 		enemy.RewardGranted = true
 		-- Shared encounter prototype: each present player receives their own reward.
 		for _, player in Players:GetPlayers() do
-			EconomyService.AddGold(player, enemy.GoldReward)
+			EconomyService.EarnGold(player, enemy.GoldReward)
 		end
 	end)
 end
