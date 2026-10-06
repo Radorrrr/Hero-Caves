@@ -1,0 +1,16 @@
+*.rbxl
+*.rbxlx
+*.lock
+*.rbxm
+*.rbxmx
+
+build/
+dist/
+
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+*.tmp
+*.temp
+*.bak
