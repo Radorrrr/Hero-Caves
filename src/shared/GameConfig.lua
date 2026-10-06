@@ -3,8 +3,5 @@ return {
 	WaveDelay = 1,
 	BossEveryWaves = 5,
 	BossTimeLimit = 30,
-	TestAttackerEnabled = true,
-	TestDamage = 5,
-	TestAttackInterval = 1,
 	DebugLogging = true,
 }

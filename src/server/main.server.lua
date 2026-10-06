@@ -1,6 +1,6 @@
 local Services = script.Parent.Services
 local WaveService = require(Services.WaveService)
-local CombatService = require(Services.CombatService)
+local HeroService = require(Services.HeroService)
 
 WaveService.Start()
-CombatService.Start()
+HeroService.Start()

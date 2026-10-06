@@ -1,31 +1,32 @@
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
+local TweenService = game:GetService("TweenService")
+local HeroConfig = require(ReplicatedStorage.Shared.HeroConfig)
+local EnemyConfig = require(ReplicatedStorage.Shared.EnemyConfig)
 local EnemyService = require(script.Parent.EnemyService)
 
 local CombatService = {}
-local connection = nil
 
-function CombatService.Start()
-	if connection or not GameConfig.TestAttackerEnabled then
-		return
+-- Server-only API. Captured target identity prevents hitting the next wave.
+function CombatService.DamageEnemy(hero, target)
+	if not hero or not hero.Model or not hero.Model.Parent
+		or not target or target ~= EnemyService.GetActiveEnemy()
+		or not target.Model.Parent or target.Health <= 0 then
+		return false
 	end
-	assert(GameConfig.TestAttackInterval > 0, "TestAttackInterval must be positive")
-	local nextAttackAt = time() + GameConfig.TestAttackInterval
-	connection = RunService.Heartbeat:Connect(function()
-		if time() >= nextAttackAt then
-			-- No catch-up bursts after a long frame.
-			nextAttackAt = time() + GameConfig.TestAttackInterval
-			EnemyService.Damage(GameConfig.TestDamage)
-		end
-	end)
-end
-
-function CombatService.Stop()
-	if connection then
-		connection:Disconnect()
-		connection = nil
+	local definition = HeroConfig[hero.Id]
+	if not definition then
+		return false
 	end
+	local body = target.Model.PrimaryPart
+	local applied = EnemyService.Damage(definition.Damage)
+	if applied and body and body.Parent then
+		body.Color = HeroConfig.Impact.FlashColor
+		local enemyDefinition = target.IsBoss and EnemyConfig.Boss or EnemyConfig.Normal
+		TweenService:Create(body, TweenInfo.new(HeroConfig.Impact.FlashDuration), {
+			Color = enemyDefinition.Color,
+		}):Play()
+	end
+	return applied
 end
 
 return CombatService
