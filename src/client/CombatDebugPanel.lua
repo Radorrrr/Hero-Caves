@@ -1,3 +1,4 @@
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
@@ -7,8 +8,8 @@ local NumberFormatter = require(ReplicatedStorage.Shared.NumberFormatter)
 local CombatDebugPanel = {}
 function CombatDebugPanel.Start(gui)
 	if not RunService:IsStudio() or not GameConfig.StudioTesting.Enabled then return end
-	local data = ReplicatedStorage:WaitForChild("HeroCavesCombatDebug")
-	local remote = data:WaitForChild("Control")
+	local data = Players.LocalPlayer:WaitForChild("HeroCavesCombatDebug")
+	local remote = ReplicatedStorage:WaitForChild("HeroCavesCombatDebug"):WaitForChild("Control")
 	local panel = Instance.new("ScrollingFrame")
 	panel.Name = "CombatDebug"
 	panel.AnchorPoint = Vector2.new(1, 0)
@@ -37,7 +38,7 @@ function CombatDebugPanel.Start(gui)
 		end
 		return obj
 	end
-	item("TextLabel", "Title", 6, 28).Text = "STUDIO · Shared combat controls"
+	item("TextLabel", "Title", 6, 28).Text = "STUDIO · Your island combat"
 	local context = item("TextLabel", "Context", 38, 90)
 	local pause = item("TextButton", "Pause", 132, 32)
 	local reset = item("TextButton", "ResetEnemyHP", 170, 32)
@@ -45,6 +46,7 @@ function CombatDebugPanel.Start(gui)
 	local labels, buttons = {}, {}
 	local lastRequest = -math.huge
 	local function request(...)
+		if not data:GetAttribute("Active") then return end
 		if time() - lastRequest < 0.15 then return end
 		lastRequest = time()
 		remote:FireServer(...)
@@ -64,7 +66,7 @@ function CombatDebugPanel.Start(gui)
 		end)
 	end
 	local function render()
-		context.Text = string.format("Wave %s · Boss %s\nEnemy %s / %s HP\nGold Multiplier: x%.2f · Total DPS: %s\nScene owner: %s",
+		context.Text = not data:GetAttribute("Active") and "NO ACTIVE COMBAT AREA\nClaim an island to start combat." or string.format("Wave %s · Boss %s\nEnemy %s / %s HP\nGold Multiplier: x%.2f · Total DPS: %s\nPlayer: %s",
 			tostring(data:GetAttribute("Wave")), data:GetAttribute("IsBoss") and "Yes" or "No",
 			NumberFormatter.Format(data:GetAttribute("EnemyHP")), NumberFormatter.Format(data:GetAttribute("EnemyMaxHP")),
 			data:GetAttribute("GoldMultiplier") or 1, NumberFormatter.Format(data:GetAttribute("TotalDPS")),

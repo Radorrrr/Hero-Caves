@@ -200,9 +200,9 @@ local function render()
 	levelButton.Text = not owned and ("BUY HERO — " .. NumberFormatter.Format(unlockCost) .. " GOLD")
 		or (maxLevel and "Maximum level" or ("Level Up +" .. tostring(count) .. "\n" .. NumberFormatter.Format(bulkCost) .. " Gold"))
 	styleButton(levelButton, affordable)
-	ownerLabel.Text = player:GetAttribute("IsHeroCombatOwner")
-		and "The shared scene uses your owned heroes, levels and upgrades."
-		or "Shared scene uses another player's heroes. Your purchases and gold bonuses remain personal."
+	ownerLabel.Text = player:GetAttribute("HasCombatArea")
+		and "Your heroes fight on your claimed island. Waves and rewards are personal."
+		or "Claim an island to start combat. Your hero purchases and upgrades are ready."
 	for id, tab in tabButtons do
 		local other = heroSnapshots[id].Data
 		local hasHero = other:GetAttribute("Owned") == true
@@ -235,7 +235,7 @@ for index, id in HeroConfig.HeroOrder do
 		render()
 	end)
 end
-for _, name in {"Gold", "GoldMultiplier", "IsHeroCombatOwner", "TotalDPS"} do
+for _, name in {"Gold", "GoldMultiplier", "HasCombatArea", "TotalDPS"} do
 	player:GetAttributeChangedSignal(name):Connect(render)
 end
 for _, snapshot in heroSnapshots do

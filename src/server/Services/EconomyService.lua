@@ -5,6 +5,8 @@ local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local ProgressionMath = require(script.Parent.Parent.ProgressionMath)
 local EnemyService = require(script.Parent.EnemyService)
 
+local Contexts = require(script.Parent.CombatContexts)
+
 local EconomyService = {}
 local balances = {}
 local started = false
@@ -91,9 +93,9 @@ function EconomyService.Start()
 			return
 		end
 		enemy.RewardGranted = true
-		-- Shared encounter prototype: each present player receives their own reward.
-		for _, player in Players:GetPlayers() do
-			EconomyService.EarnGold(player, enemy.GoldReward)
+		local context = enemy.Context
+		if Contexts.IsActive(context) then
+			EconomyService.EarnGold(context.Player, enemy.GoldReward)
 		end
 	end)
 end

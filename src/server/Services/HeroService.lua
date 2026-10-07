@@ -12,12 +12,7 @@ local RangedRig = require(script.Parent.Parent.Heroes.RangedRig)
 local CombatDebugState = require(script.Parent.CombatDebugState)
 
 local HeroService = {}
-local activeHeroes = {}
-local heroesById = {}
-local connection = nil
-local heroFolder = nil
-local debugConnection = nil
-local resetConnection = nil
+local Contexts = require(script.Parent.CombatContexts)
 local rigFactories = {Knight = KnightRig.new, Ranged = RangedRig.new}
 
 local function interpolate(from, to, progress)
@@ -38,21 +33,15 @@ local function idle(hero)
 end
 
 local function updateHero(hero, now)
-	local owner = ProgressionService.GetCombatOwner()
-	if hero.Owner ~= owner then
-		idle(hero)
-		return
-	end
-	if not owner then
-		return
-	end
-	if not CombatDebugState.IsHeroEnabled(hero.Id) then
+	local context = hero.Context
+	local owner = hero.Owner
+	if not Contexts.IsActive(context) or not CombatDebugState.IsHeroEnabled(owner, hero.Id) then
 		if hero.Target then idle(hero) end
 		return
 	end
 	hero.Model:SetAttribute("Level", ProgressionService.GetHeroLevel(owner, hero.Id))
 	hero.Model:SetAttribute("Damage", ProgressionService.GetHeroDamage(owner, hero.Id, false))
-	local target = EnemyService.GetActiveEnemy()
+	local target = EnemyService.GetActiveEnemy(context)
 	if not target or not target.Model.Parent or target.Health <= 0
 		or (target.IsBoss and now >= target.Deadline) then
 		if hero.Target then
@@ -62,8 +51,8 @@ local function updateHero(hero, now)
 	end
 
 	local enemyPosition = target.Model.PrimaryPart.Position
-	-- Each hero definition owns its slot offset; no chasing or pathfinding.
-	hero.Rig:SetFacing(GameConfig.EnemySpawnPosition + hero.Config.SlotOffset, enemyPosition)
+	-- The claimed island provides the slot; no chasing or pathfinding.
+	hero.Rig:SetFacing(context.Island.Markers[hero.Id .. "Slot"].Position, enemyPosition)
 	if hero.Target and hero.Target ~= target then
 		idle(hero)
 	end
@@ -95,14 +84,14 @@ local function updateHero(hero, now)
 			(elapsed - animation.WindupDuration) / animation.SwingDuration))
 		if hero.Rig.SetProjectileProgress then
 			hero.Rig:SetProjectileProgress(enemyPosition,
-				(elapsed - animation.WindupDuration) / animation.SwingDuration)
+				(elapsed - animation.WindupDuration) / animation.SwingDuration, hero.Target)
 		end
 	else
 		if not hero.Impacted then
 			-- Pose is replicated before the single authoritative hit is applied.
 			hero.Rig:SetPose(animation.ImpactAngle)
 			if hero.Rig.SetProjectileProgress then
-				hero.Rig:SetProjectileProgress(enemyPosition, 1)
+				hero.Rig:SetProjectileProgress(enemyPosition, 1, hero.Target)
 			end
 			hero.Model:SetAttribute("AttackPhase", "Impact")
 			hero.Impacted = true
@@ -127,11 +116,13 @@ local function updateHero(hero, now)
 	end
 end
 
-function HeroService.GetActiveHeroes()
-	return table.clone(activeHeroes)
+function HeroService.GetActiveHeroes(context)
+	return context and table.clone(context.Heroes) or {}
 end
 
-local function synchronizeOwnedHeroes(owner, now)
+local function synchronizeOwnedHeroes(context, now)
+	local owner = context.Player
+	local activeHeroes, heroesById = context.Heroes, context.HeroesById
 	for index = #activeHeroes, 1, -1 do
 		local hero = activeHeroes[index]
 		if hero.Owner ~= owner or not ProgressionService.OwnsHero(owner, hero.Id) or not hero.Model.Parent then
@@ -152,11 +143,12 @@ local function synchronizeOwnedHeroes(owner, now)
 			end
 			local factory = rigFactories[config.RigType]
 			assert(factory, "No rig factory for hero")
-			local rig = factory(config, heroFolder)
-			rig:SetFacing(GameConfig.EnemySpawnPosition + config.SlotOffset, GameConfig.EnemySpawnPosition)
+			local rig = factory(config, context.HeroFolder)
+			rig:SetFacing(context.Island.Markers[heroId .. "Slot"].Position, context.Island.Markers.EnemyPosition.Position)
 			local hero = {Id = heroId, Config = config, Rig = rig, Model = rig.Model,
-				Owner = owner, NextAttackAt = now}
+				Owner = owner, Context = context, NextAttackAt = now}
 			hero.Model:SetAttribute("OwnerUserId", owner.UserId)
+			hero.Model:SetAttribute("ContextId", context.Id)
 			idle(hero)
 			heroesById[heroId] = hero
 			table.insert(activeHeroes, hero)
@@ -167,52 +159,38 @@ local function synchronizeOwnedHeroes(owner, now)
 	end
 end
 
-function HeroService.Start()
-	if connection then
-		return
-	end
-	resetConnection = ProgressionService.HeroReset:Connect(function(player, heroId)
-		local hero = heroesById[heroId]
-		if hero and hero.Owner == player then
-			idle(hero)
-			hero.NextAttackAt = time() -- Resume with a fresh windup, never a stale impact.
+function HeroService.Start(context)
+	if not Contexts.IsActive(context) or context.HeroConnection then return end
+	table.insert(context.HeroConnections, ProgressionService.HeroReset:Connect(function(player, heroId)
+		if player ~= context.Player then return end
+		local hero = context.HeroesById[heroId]
+		if hero then idle(hero); hero.NextAttackAt = time() end
+	end))
+	table.insert(context.HeroConnections, CombatDebugState.Changed:Connect(function(player)
+		if player ~= context.Player then return end
+		for _, hero in context.Heroes do
+			if not CombatDebugState.IsHeroEnabled(player, hero.Id) then idle(hero) end
 		end
-	end)
-	debugConnection = CombatDebugState.Changed:Connect(function()
-		for _, hero in activeHeroes do
-			if not CombatDebugState.IsHeroEnabled(hero.Id) then idle(hero) end
+	end))
+	table.insert(context.HeroConnections, EnemyService.Changed:Connect(function(changedContext)
+		if changedContext ~= context then return end
+		for _, hero in context.Heroes do
+			if hero.Target and hero.Target ~= context.CurrentEnemy then idle(hero) end
 		end
-	end)
-	heroFolder = Instance.new("Folder")
-	heroFolder.Name = "HeroCavesHeroes"
-	heroFolder.Parent = workspace
-	synchronizeOwnedHeroes(ProgressionService.GetCombatOwner(), time())
-	connection = RunService.Heartbeat:Connect(function()
-		local now = time()
-		synchronizeOwnedHeroes(ProgressionService.GetCombatOwner(), now)
-		-- One dispatcher; each hero owns its own attack start, cooldown and projectile.
-		for _, activeHero in activeHeroes do
-			updateHero(activeHero, now)
-		end
+	end))
+	synchronizeOwnedHeroes(context, time())
+	context.HeroConnection = RunService.Heartbeat:Connect(function()
+		if not Contexts.IsActive(context) then return end
+		synchronizeOwnedHeroes(context, time())
+		for _, hero in context.Heroes do updateHero(hero, time()) end
 	end)
 end
-
-function HeroService.Stop()
-	if resetConnection then resetConnection:Disconnect(); resetConnection = nil end
-	if debugConnection then debugConnection:Disconnect(); debugConnection = nil end
-	if connection then
-		connection:Disconnect()
-		connection = nil
-	end
-	for _, hero in activeHeroes do
-		hero.Rig:Destroy()
-	end
-	table.clear(activeHeroes)
-	table.clear(heroesById)
-	if heroFolder then
-		heroFolder:Destroy()
-		heroFolder = nil
-	end
+function HeroService.Stop(context)
+	if context.HeroConnection then context.HeroConnection:Disconnect(); context.HeroConnection = nil end
+	for _, connection in context.HeroConnections do connection:Disconnect() end
+	table.clear(context.HeroConnections)
+	for _, hero in context.Heroes do idle(hero); hero.Rig:Destroy() end
+	table.clear(context.Heroes)
+	table.clear(context.HeroesById)
 end
-
 return HeroService

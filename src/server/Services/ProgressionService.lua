@@ -8,6 +8,7 @@ local UpgradeEffects = require(script.Parent.Parent.UpgradeEffects)
 local EconomyService = require(script.Parent.EconomyService)
 
 local CombatDebugState = require(script.Parent.CombatDebugState)
+local Contexts = require(script.Parent.CombatContexts)
 
 local ProgressionService = {}
 local playerHeroes = {}
@@ -18,7 +19,6 @@ local purchaseModes = {"x1", "x10", "x25", "x100", "MAX", "NEXT"}
 local lastPurchaseAt = {}
 local milestoneIndex = {}
 local heroIds = {}
-local combatOwner = nil
 local started = false
 
 local function validId(value)
@@ -121,6 +121,8 @@ end
 
 local function publish(player)
 	local heroes = playerHeroes[player]
+	if not heroes then return end
+	player:SetAttribute("HasCombatArea", Contexts.Get(player) ~= nil)
 	player:SetAttribute("GoldMultiplier", ProgressionService.GetGoldMultiplier(player))
 	local totalDPS = 0
 	for heroId, state in heroes do
@@ -141,7 +143,7 @@ local function publish(player)
 		state.Replicated:SetAttribute("AttackInterval", interval)
 		state.Replicated:SetAttribute("AttackSpeed", speed)
 		state.Replicated:SetAttribute("DPS", dps)
-		local attackEnabled = state.Owned and CombatDebugState.IsHeroEnabled(heroId)
+		local attackEnabled = state.Owned and Contexts.Get(player) ~= nil and CombatDebugState.IsHeroEnabled(player, heroId)
 		state.Replicated:SetAttribute("AttackEnabled", attackEnabled)
 		if attackEnabled then totalDPS += dps end
 		for upgradeId in milestoneIndex[heroId] do
@@ -157,14 +159,6 @@ local function publish(player)
 	publishPurchaseQuotes(player)
 	player:SetAttribute("TotalDPS", totalDPS)
 	player:SetAttribute("CombatStatsRevision", (player:GetAttribute("CombatStatsRevision") or 0) + 1)
-end
-
-local function setCombatOwner(player)
-	combatOwner = player
-	workspace:SetAttribute("HeroCombatOwnerUserId", player and player.UserId or 0)
-	for _, currentPlayer in Players:GetPlayers() do
-		currentPlayer:SetAttribute("IsHeroCombatOwner", currentPlayer == player)
-	end
 end
 
 local function startingLevel(heroId)
@@ -210,14 +204,10 @@ local function initializePlayer(player)
 		publishPurchaseQuotes(player)
 	end)
 	folder.Parent = player
-	player:SetAttribute("IsHeroCombatOwner", player == combatOwner)
-	if not combatOwner then
-		setCombatOwner(player)
-	end
 end
 
-function ProgressionService.GetCombatOwner()
-	return combatOwner
+function ProgressionService.Refresh(player)
+	publish(player)
 end
 
 local function beginPurchase(player)
@@ -255,7 +245,7 @@ function ProgressionService.BuyHeroLevel(player, heroId)
 end
 
 function ProgressionService.ResetHero(player, heroId)
-	if not CombatDebugState.IsAvailable() or not playerHeroes[player] or player.Parent ~= Players
+	if not CombatDebugState.IsAvailable() or not Contexts.Get(player) or not playerHeroes[player] or player.Parent ~= Players
 		or not validId(heroId) then return false end
 	local state = getState(player, heroId)
 	if not state then return false end
@@ -321,9 +311,8 @@ function ProgressionService.Start()
 	end
 	validateConfig()
 	started = true
-	CombatDebugState.Changed:Connect(function()
-		for player in playerHeroes do publish(player) end
-	end)
+	CombatDebugState.Changed:Connect(publish)
+	Contexts.Changed:Connect(publish)
 	EconomyService.SetGoldMultiplierProvider(ProgressionService.GetGoldMultiplier)
 	Players.PlayerAdded:Connect(initializePlayer)
 	Players.PlayerRemoving:Connect(function(player)
@@ -332,16 +321,7 @@ function ProgressionService.Start()
 		lastPurchaseAt[player] = nil
 		local folder = player:FindFirstChild("HeroProgression")
 		if folder then folder:Destroy() end
-		if player == combatOwner then
-			local replacement = nil
-			for _, other in Players:GetPlayers() do
-				if other ~= player and playerHeroes[other] then
-					replacement = other
-					break
-				end
-			end
-			setCombatOwner(replacement)
-		end
+
 	end)
 	for _, player in Players:GetPlayers() do
 		initializePlayer(player)

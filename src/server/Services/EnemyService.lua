@@ -8,8 +8,7 @@ local defeatedEvent = Instance.new("BindableEvent")
 EnemyService.Defeated = defeatedEvent.Event
 local changedEvent = Instance.new("BindableEvent")
 EnemyService.Changed = changedEvent.Event
-local activeEnemy = nil
-local enemyFolder = nil
+local Contexts = require(script.Parent.CombatContexts)
 
 local function normalHealth(wave)
 	return math.floor(EnemyConfig.BaseHealth * EnemyConfig.HealthGrowth ^ (wave - 1) + 0.5)
@@ -28,26 +27,22 @@ local function updateDisplay(enemy)
 	end
 end
 
-function EnemyService.GetActiveEnemy()
-	return activeEnemy
+function EnemyService.GetActiveEnemy(context)
+	return Contexts.IsActive(context) and context.CurrentEnemy or nil
 end
 
-function EnemyService.Remove()
-	if activeEnemy then
-		activeEnemy.Model:Destroy()
-		activeEnemy = nil
-		changedEvent:Fire()
+function EnemyService.Remove(context)
+	if context and context.CurrentEnemy then
+		context.CurrentEnemy.Model:Destroy()
+		context.CurrentEnemy = nil
+		changedEvent:Fire(context)
 	end
 end
 
-function EnemyService.Spawn(wave, isBoss)
-	-- Replacing an enemy always removes the previous one first.
-	EnemyService.Remove()
-	if not enemyFolder then
-		enemyFolder = Instance.new("Folder")
-		enemyFolder.Name = "HeroCavesEnemies"
-		enemyFolder.Parent = workspace
-	end
+function EnemyService.Spawn(context, wave, isBoss)
+	if not Contexts.IsActive(context) then return nil end
+	EnemyService.Remove(context)
+	context.EnemySequence += 1
 
 	local definition = isBoss and EnemyConfig.Boss or EnemyConfig.Normal
 	local maxHealth = isBoss
@@ -55,6 +50,9 @@ function EnemyService.Spawn(wave, isBoss)
 		or normalHealth(wave)
 	local model = Instance.new("Model")
 	model.Name = definition.Name
+	model:SetAttribute("OwnerUserId", context.Player.UserId)
+	model:SetAttribute("ContextId", context.Id)
+	model:SetAttribute("EnemyId", context.Id .. ":" .. context.EnemySequence)
 	model:SetAttribute("Wave", wave)
 	model:SetAttribute("IsBoss", isBoss)
 	model:SetAttribute("MaxHealth", maxHealth)
@@ -67,7 +65,7 @@ function EnemyService.Spawn(wave, isBoss)
 	body.Size = definition.Size
 	body.Color = definition.Color
 	body.Material = Enum.Material.SmoothPlastic
-	body.Position = GameConfig.EnemySpawnPosition
+	body.CFrame = context.Island.Markers.EnemyPosition.CFrame
 	body.Anchored = true
 	body.CanCollide = false
 	body.Parent = model
@@ -110,7 +108,8 @@ function EnemyService.Spawn(wave, isBoss)
 	fill.BorderSizePixel = 0
 	fill.Parent = bar
 
-	activeEnemy = {
+	local enemy = {
+		Context = context,
 		Model = model,
 		Name = definition.Name,
 		Health = maxHealth,
@@ -123,23 +122,29 @@ function EnemyService.Spawn(wave, isBoss)
 		HealthLabel = healthLabel,
 		HealthFill = fill,
 	}
-	updateDisplay(activeEnemy)
-	model.Parent = enemyFolder
-	changedEvent:Fire()
+	context.CurrentEnemy = enemy
+	updateDisplay(enemy)
+	model.Parent = context.EnemyFolder
+	changedEvent:Fire(context)
 	if GameConfig.DebugLogging then
 		print(string.format("[EnemyService] Spawned %s with %d HP", definition.Name, maxHealth))
 	end
-	return activeEnemy
+	return enemy
 end
 
-function EnemyService.UpdateDisplay()
-	if activeEnemy then
-		updateDisplay(activeEnemy)
+function EnemyService.UpdateDisplay(context)
+	local enemy = EnemyService.GetActiveEnemy(context)
+	if enemy and enemy.IsBoss then
+		local remaining = math.max(0, math.ceil(enemy.Deadline - time()))
+		if enemy.Model:GetAttribute("TimeRemaining") ~= remaining then
+			updateDisplay(enemy)
+			changedEvent:Fire(context) -- Timer snapshot only when its displayed second changes.
+		end
 	end
 end
 
-function EnemyService.Damage(amount, sourceName)
-	local enemy = activeEnemy
+function EnemyService.Damage(context, amount, sourceName)
+	local enemy = EnemyService.GetActiveEnemy(context)
 	if not enemy or type(amount) ~= "number" or amount <= 0
 		or amount ~= amount or amount == math.huge then
 		return false
@@ -150,7 +155,7 @@ function EnemyService.Damage(amount, sourceName)
 	end
 	enemy.Health = math.max(0, enemy.Health - math.floor(amount))
 	updateDisplay(enemy)
-	changedEvent:Fire()
+	changedEvent:Fire(context)
 	if GameConfig.DebugLogging then
 		print(string.format("[CombatService] %s dealt %d damage", sourceName or "Server", math.floor(amount)))
 	end
@@ -158,7 +163,7 @@ function EnemyService.Damage(amount, sourceName)
 		if GameConfig.DebugLogging then
 			print("[EnemyService] Enemy defeated")
 		end
-		EnemyService.Remove()
+		EnemyService.Remove(context)
 		-- Removal for replacement/timeout never fires this death-only signal.
 		defeatedEvent:Fire(enemy)
 	end
@@ -166,12 +171,12 @@ function EnemyService.Damage(amount, sourceName)
 end
 
 -- Server-only HP reset. Boss deadline deliberately continues to run.
-function EnemyService.ResetHealth()
-	local enemy = activeEnemy
+function EnemyService.ResetHealth(context)
+	local enemy = EnemyService.GetActiveEnemy(context)
 	if not enemy or enemy.Health <= 0 or (enemy.IsBoss and time() >= enemy.Deadline) then return false end
 	enemy.Health = enemy.MaxHealth
 	updateDisplay(enemy)
-	changedEvent:Fire()
+	changedEvent:Fire(context)
 	return true
 end
 

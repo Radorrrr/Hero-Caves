@@ -110,7 +110,7 @@ function RangedRig:SetPose(angle)
 	end
 end
 
-function RangedRig:SetProjectileProgress(targetPosition, progress)
+function RangedRig:SetProjectileProgress(targetPosition, progress, target)
 	if not self.Projectile then
 		local projectile = Instance.new("Part")
 		local visual = self.Config.Visual
@@ -126,6 +126,11 @@ function RangedRig:SetProjectileProgress(targetPosition, progress)
 		self.ProjectileStart = self.Muzzle.Position
 		self.ProjectileEnd = targetPosition
 		self.Projectile = projectile
+		self.ProjectileTarget = target
+		projectile:SetAttribute("OwnerUserId", self.Model:GetAttribute("OwnerUserId"))
+		projectile:SetAttribute("ContextId", self.Model:GetAttribute("ContextId"))
+		projectile:SetAttribute("HeroId", self.Model:GetAttribute("HeroId"))
+		projectile:SetAttribute("TargetEnemyId", target and target.Model:GetAttribute("EnemyId"))
 		projectile.Parent = self.Model
 	end
 	local start = self.ProjectileStart
@@ -139,6 +144,8 @@ function RangedRig:ClearProjectile()
 	if self.Projectile then
 		self.Projectile:Destroy()
 		self.Projectile = nil
+		self.ProjectileTarget = nil
+		self.ProjectileStart, self.ProjectileEnd = nil, nil
 	end
 end
 

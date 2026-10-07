@@ -4,6 +4,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.WorldConfig)
 
 local IslandService = {}
+local claimedEvent = Instance.new("BindableEvent")
+local releasingEvent = Instance.new("BindableEvent")
+IslandService.Claimed = claimedEvent.Event
+IslandService.Releasing = releasingEvent.Event
 local islands = {}
 local playerIslands = {}
 local playerConnections = {}
@@ -179,13 +183,15 @@ function IslandService.TryClaim(player, islandId)
 	island.Label.Text = player.DisplayName .. "'s Cave"
 	island.Markers.ClaimZone.Color = Color3.fromRGB(80, 175, 105)
 	island.Cave = cave(island)
+	claimedEvent:Fire(player, island)
 	showFeedback(player, "Island " .. island.Id .. " claimed. This is your cave.")
 	return true, "Claimed"
 end
 
-local function release(player)
+function IslandService.ReleaseIsland(player)
 	local island = playerIslands[player]
 	if island then
+		releasingEvent:Fire(player, island)
 		island.Owner = nil
 		playerIslands[player] = nil
 		island.Model:SetAttribute("OwnerUserId", 0)
@@ -194,6 +200,12 @@ local function release(player)
 		if island.Cave then island.Cave:Destroy(); island.Cave = nil end
 	end
 	player:SetAttribute("IslandId", nil)
+	player.RespawnLocation = player.Parent == Players and hubSpawn or nil
+	return island ~= nil
+end
+
+local function release(player)
+	IslandService.ReleaseIsland(player)
 	lastFeedback[player] = nil
 	if playerConnections[player] then playerConnections[player]:Disconnect(); playerConnections[player] = nil end
 	player.RespawnLocation = nil

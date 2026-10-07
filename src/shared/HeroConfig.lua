@@ -47,7 +47,6 @@ return {
 		},
 		-- Minimum time between attack starts, including animation and cooldown.
 		AttackInterval = 1.3,
-		SlotOffset = Vector3.new(0, -1.6, 5.3),
 		Animation = {
 			WindupDuration = 0.28,
 			SwingDuration = 0.16,
@@ -74,7 +73,6 @@ return {
 		BaseDamage = 8, DamageGrowth = 1.08,
 		BaseLevelCost = 15, LevelCostGrowth = 1.12, MaxLevel = 200,
 		AttackInterval = 0.7,
-		SlotOffset = Vector3.new(5, -1.6, 9),
 		Animation = {
 			WindupDuration = 0.12, SwingDuration = 0.22,
 			FollowThroughDuration = 0.08, RecoveryDuration = 0.13,
@@ -115,7 +113,6 @@ return {
 		BaseDamage = 55, DamageGrowth = 1.09,
 		BaseLevelCost = 40, LevelCostGrowth = 1.12, MaxLevel = 200,
 		AttackInterval = 2.4,
-		SlotOffset = Vector3.new(-5, -1.6, 9),
 		Animation = {
 			WindupDuration = 0.5, SwingDuration = 0.45,
 			FollowThroughDuration = 0.15, RecoveryDuration = 0.35,
