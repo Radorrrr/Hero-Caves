@@ -28,6 +28,7 @@ end
 local function marker(name, frame, parent)
 	local object = part("Part", name, Vector3.new(1, 1, 1), frame, parent)
 	object.Transparency = 1
+	object.CastShadow = false
 	object.CanCollide = false
 	object.CanTouch = false
 	object.CanQuery = false
@@ -37,6 +38,12 @@ end
 local function spawnPoint(name, frame, parent)
 	local spawn = part("SpawnLocation", name, Vector3.new(8, 1, 8), frame, parent,
 		Color3.fromRGB(90, 165, 195))
+	-- Position reference only: the platform supplies the walkable surface.
+	spawn.Transparency = 1
+	spawn.CastShadow = false
+	spawn.CanCollide = false
+	spawn.CanTouch = false
+	spawn.CanQuery = false
 	spawn.Neutral = true
 	spawn.AllowTeamChangeOnTouch = false
 	spawn.Duration = 0
@@ -78,10 +85,11 @@ local function cave(island)
 	model.Name = "CavePlaceholder"
 	local origin = island.Markers.CavePosition.CFrame
 	local color = Color3.fromRGB(75, 75, 85)
-	part("Part", "Left", Vector3.new(4, 12, 12), origin * CFrame.new(-7, 6, 0), model, color)
-	part("Part", "Right", Vector3.new(4, 12, 12), origin * CFrame.new(7, 6, 0), model, color)
+	-- Walls end at roof underside Y=10; side walls end at back wall front Z=4.
+	part("Part", "Left", Vector3.new(4, 10, 10), origin * CFrame.new(-7, 5, -1), model, color)
+	part("Part", "Right", Vector3.new(4, 10, 10), origin * CFrame.new(7, 5, -1), model, color)
 	part("Part", "Roof", Vector3.new(18, 4, 12), origin * CFrame.new(0, 12, 0), model, color)
-	part("Part", "Back", Vector3.new(18, 12, 2), origin * CFrame.new(0, 6, 5), model, color)
+	part("Part", "Back", Vector3.new(18, 10, 2), origin * CFrame.new(0, 5, 5), model, color)
 	model.Parent = island.Model
 	return model
 end
@@ -176,6 +184,7 @@ end
 
 function IslandService.Start()
 	if started then return end
+	assert(Config.BridgeSurfaceDrop > 0, "Bridge top must be below platform surface")
 	assert(Config.IslandCount >= 1 and Config.IslandCount % 1 == 0, "Invalid island count")
 	assert(Config.IslandRadius > Config.HubSize.X / 2 + Config.IslandSize.Z / 2, "Islands must be outside Hub")
 	assert(not workspace:FindFirstChild(Config.FolderName), "World folder already exists")
@@ -217,7 +226,10 @@ function IslandService.Start()
 			Color3.fromRGB(240, 200, 90))
 		zone.CanCollide = false
 		zone.CanTouch = true
-		zone.Transparency = 0.65
+		-- Invisible detection volume; the ownership BillboardGui remains visible.
+		zone.Transparency = 1
+		zone.CastShadow = false
+		zone.CanQuery = false
 		spawnPoint("PlayerSpawn", origin * CFrame.new(Config.PlayerSpawnOffset), markers)
 		marker("CavePosition", origin * CFrame.new(Config.CaveOffset), markers)
 		marker("EnemyPosition", origin * CFrame.new(Config.EnemyOffset), markers)
@@ -233,7 +245,7 @@ function IslandService.Start()
 		local bridgeStart = math.min(Config.HubSize.X, Config.HubSize.Z) / 2 - 6
 		local bridgeEnd = Config.IslandRadius - Config.IslandSize.Z / 2 + 6
 		local midpoint = surface + direction * ((bridgeStart + bridgeEnd) / 2)
-		midpoint -= Vector3.new(0, Config.BridgeThickness / 2, 0)
+		midpoint -= Vector3.new(0, Config.BridgeThickness / 2 + Config.BridgeSurfaceDrop, 0)
 		part("Part", "Bridge" .. id, Vector3.new(Config.BridgeWidth, Config.BridgeThickness, bridgeEnd - bridgeStart),
 			CFrame.lookAt(midpoint, midpoint + direction), bridges, Color3.fromRGB(110, 100, 85))
 	end

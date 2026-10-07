@@ -11,6 +11,8 @@ return {
 	AngularSpacingDegrees = nil,
 	BridgeWidth = 12,
 	BridgeThickness = 2,
+	-- Keep embedded bridge ends below floor surfaces, avoiding coplanar top faces.
+	BridgeSurfaceDrop = 0.2,
 	ClaimZoneSize = Vector3.new(20, 8, 12),
 	ClaimZoneOffset = Vector3.new(0, 4, -22),
 	PlayerSpawnOffset = Vector3.new(0, 1, -8),

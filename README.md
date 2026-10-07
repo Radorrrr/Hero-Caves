@@ -578,7 +578,8 @@ replication must still be verified in Roblox Studio. Bulk leveling and hero rese
 
 The server generates `Workspace.HeroCavesWorld` from `src/shared/WorldConfig.lua`:
 one 88x88 Hub, six 64x64 islands on a 150-stud radius at equal 60-degree spacing,
-and six 12-stud-wide bridges. Platform/bridge tops share Y=0. Island 1 is north
+and six 12-stud-wide bridges. Platform tops are at Y=0; bridge tops are recessed to Y=-0.2 to avoid
+coplanar overlap at their embedded ends. Island 1 is north
 of the Hub; numbering proceeds clockwise to Island 6. Everything is anchored,
 temporary Parts. Bridges make claiming reachable by walking without a teleport,
 claim button or flight system. This adds a playable floor to a blank place.
@@ -590,7 +591,7 @@ the same generator; additional named hero markers need only another HeroSlots
 entry. Changing size/radius should preserve sufficient bridge/zone clearance.
 
 `IslandService` owns the server-only island records and player-to-island map.
-A yellow transparent **ClaimZone** and **UNCLAIMED** sign identify each free island.
+An invisible **ClaimZone** beneath an **UNCLAIMED** sign identifies each free island.
 On Touched, the server resolves the current player's character and checks a live
 Humanoid with its root physically inside the oriented ClaimZone. It verifies the
 island is free and the player has no island, then writes both ownership mappings
@@ -599,7 +600,7 @@ callbacks observe the first completed claim. Repeated body-part touches cannot
 create another cave or island. No client ownership-request remote exists;
 replicated IslandId/OwnerUserId attributes are display data, not ownership state.
 
-Successful claim shows `<DisplayName>'s Cave`, changes the zone to green, creates
+Successful claim shows `<DisplayName>'s Cave`, creates
 a four-part CavePlaceholder, and selects that island's PlayerSpawn for future
 respawns. Claiming does not teleport the walking player. Brief client feedback
 reports success, an already-owned island, an occupied island, or full capacity;
@@ -613,7 +614,7 @@ claims an island and does not duplicate its cave. Stale character callbacks chec
 player presence, character identity and service generation before positioning.
 
 When an owner leaves, IslandService clears both ownership mappings, resets the
-sign/zone/OwnerUserId, destroys the cave, clears the player's IslandId and spawn
+sign/OwnerUserId, destroys the cave, clears the player's IslandId and spawn
 reference, and disconnects their character listener. The persistent zone listener
 remains available for the next claimant. Rejoining starts unowned at the Hub;
 there is no saving. With all six islands occupied, additional players spawn at
@@ -634,7 +635,7 @@ Workspace.HeroCavesWorld
     Island1 ... Island6
       Platform
       Markers
-        ClaimZone                 (visible non-colliding touch volume + sign)
+        ClaimZone                 (invisible non-colliding touch volume + visible sign)
         PlayerSpawn               (SpawnLocation)
         CavePosition              (invisible anchored marker Part)
         EnemyPosition             (invisible anchored marker Part)
@@ -665,10 +666,10 @@ upgrade system, DataStore, matchmaking, new hero or final art in Phase 6A.
    Remove any manually added broad Baseplate if you want to inspect the floating
    layout unobstructed; the generated world supplies the floor. Existing manual
    spawn pads are not deleted, but server spawn assignment uses the generated pads.
-2. Confirm initial spawn on the blue Hub pad, exactly six evenly spaced islands
+2. Confirm initial spawn at the Hub spawn point, exactly six evenly spaced islands
    and six continuous walkable bridges. Shared Knight/enemy combat remains near
    the center of the Hub. Use a desktop viewport to inspect current prototype HUD.
-3. Walk across a bridge and through a yellow zone. It should turn green, display
+3. Walk across a bridge and through the zone beneath an UNCLAIMED sign. It should display
    your DisplayName, show claim feedback and create a basic cave. Check the player
    IslandId and island OwnerUserId in Explorer. Walk into a second free zone:
    it remains UNCLAIMED and the feedback says you already own an island.
@@ -705,3 +706,34 @@ and depends on server-observed character movement; this is not an anti-teleport
 movement validator. Island number/radius/slot configuration is reusable, but final
 spacing, cave visuals and future combat positions will need tuning later.
 Phase 6B is not implemented.
+
+
+### Phase 6A geometry correction
+
+The original generated bridges embedded their ends in the Hub/island platforms
+while both top surfaces were exactly Y=0. Those coplanar visible top faces can
+Z-fight and produce flicker/triangular patterns. The translucent ClaimZone also
+had its bottom face at Y=0 (`center Y=4`, `height=8`), coincident with island floor.
+The cave's 12-high walls intersected the roof from Y=10 to 12; the side/back walls
+also overlapped in the rear two studs, producing coincident outer faces.
+
+`WorldConfig.BridgeSurfaceDrop=0.2` now separates bridge top faces from platform
+top faces. Embedded ends remain for uninterrupted collision coverage, with only
+a 0.2-stud step. ClaimZone is fully transparent with shadows/query disabled, while
+CanTouch stays true and the same server bounds validate claims. Ownership signs
+stay visible. SpawnLocations are invisible/non-colliding position references;
+platforms supply their floor. Other logical markers remain invisible and now
+explicitly have CastShadow=false. Spawn CFrames/RespawnLocation behavior are unchanged.
+Cave walls end exactly at the roof underside; side walls end at the back wall's
+front edge. The cave retains its four parts and outer footprint/roof height without
+intersecting visible surfaces. No additional cave/base floor is generated.
+
+43 Luau simulations pass, including non-overlapping cave geometry, bridge height
+separation/collision coverage, hidden markers/zones, claiming and owner/non-owner
+respawn, plus all existing regressions. Sources compile and Rojo paths resolve.
+For visual verification, stop Play, sync, restart and inspect the six bridge joins,
+claim areas and cave joints from several camera angles. Walk the bridges, claim
+an island and reset the character. Old running worlds do not regenerate on module
+hot reload. A separately added Baseplate at the same height can still overlap the
+generated world; the fix does not delete manually placed Studio objects.
+Phase 6B remains outside this correction.
