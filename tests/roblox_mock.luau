@@ -133,6 +133,7 @@ instanceMt.__index=function(o,k)
  end end
 
  if k=='Destroy' then return function(self)
+  self.Destroying:Fire()
   for _,child in objects do if child.Parent==self then child:Destroy() end end
   self.Parent=nil; self.destroyed=true
  end end
@@ -160,6 +161,7 @@ instanceMt.__newindex=function(o,k,v)
   end
  end
  if k=='Parent' and v then
+  if v.ChildAdded then v.ChildAdded:Fire(o) end
   local current=v
   while current do
    if current.DescendantAdded then current.DescendantAdded:Fire(o) end
@@ -200,9 +202,10 @@ function Instance.new(class)
  elseif class=='ProximityPrompt' then o.Triggered=signal()
  elseif class=='TextButton' then o.Activated=signal() end
 
- o.AttributeChanged=signal();o.DescendantAdded=signal();o.AncestryChanged=signal()
+ o.AttributeChanged=signal();o.DescendantAdded=signal();o.AncestryChanged=signal();o.Destroying=signal();o.ChildAdded=signal()
  if class=='Part' or class=='SpawnLocation' then o.Touched=signal() end
- if class=='Player' then o.CharacterAdded=signal() end
+ if class=='Player' then o.CharacterAdded=signal();function o:Kick(reason) self.KickReason=reason end end
+ if class=='Humanoid' then o.WalkSpeed=16 end
  table.insert(objects,o)
  if class=='SpawnLocation' then local decal=Instance.new('Decal');decal.Name='SpawnTexture';decal.Transparency=0;decal.Parent=o end
  return o
@@ -256,12 +259,36 @@ Enum.Font.Gotham='Gotham'; Enum.TextXAlignment={Left='Left',Right='Right',Center
 Enum.AutomaticSize={Y='Y'}; Enum.ScrollingDirection={Y='Y'}; Enum.SortOrder={LayoutOrder='LayoutOrder'}
 
 local services={CombatDebugState='CombatDebugState',CombatDebugService='CombatDebugService',GoldPopup='GoldPopup',CombatDebugPanel='CombatDebugPanel',EnemyService='EnemyService',WaveService='WaveService',CombatService='CombatService',HeroService='HeroService',EconomyService='EconomyService',ProgressionService='ProgressionService',Parent={ProgressionMath='ProgressionMath',UpgradeEffects='UpgradeEffects',Heroes={KnightRig='KnightRig',RangedRig='RangedRig'}}}
-local game={}
+local storeDB,storeCalls={},{}
+local storeFailures=0
+local storeHook
+local function clone(value)
+ if type(value)~='table' then return value end
+ local result={};for k,v in value do result[k]=clone(v) end;return result
+end
+local storeAdapter={}
+function storeAdapter:GetDataStore(name)
+ storeDB[name]=storeDB[name] or {}
+ return {UpdateAsync=function(_,key,callback)
+  table.insert(storeCalls,{Namespace=name,Key=key})
+  if storeFailures>0 then storeFailures-=1;error('simulated DataStore unavailable') end
+  if storeHook then storeHook(name,key) end
+  local result=callback(clone(storeDB[name][key]))
+  if result~=nil then storeDB[name][key]=clone(result) end
+  return clone(result)
+ end}
+end
+local guid=0
+local shutdownCallbacks={}
+local game={JobId='mock-job'}
+function game:BindToClose(callback) table.insert(shutdownCallbacks,callback) end
 function game:GetService(n)
  if n=='ReplicatedStorage' then return storage end
  if n=='Players' then return players end
  if n=='RunService' then return {Heartbeat=heartbeat,IsStudio=function() return isStudio end} end
  if n=='TweenService' then return TweenService end
+ if n=='DataStoreService' then return storeAdapter end
+ if n=='HttpService' then return {GenerateGUID=function() guid+=1;return 'session-'..guid end} end
  error(n)
 end
 local function require(n) assert(modules[n],n); return modules[n] end
@@ -290,9 +317,10 @@ local function advance(t)
 end
 
 local delayed={}
-local task={spawn=function(fn,...) fn(...) end,delay=function(_,fn) table.insert(delayed,fn) end}
+local task={spawn=function(fn,...) fn(...) end,delay=function(_,fn) table.insert(delayed,fn) end,wait=function(seconds) advance(seconds or .01) end}
+local os={time=function() return 1700000000+clock end,clock=function() return clock end}
 function players:GetPlayerFromCharacter(character)
  for _,p in self.List do if p.Character==character then return p end end
 end
 shared.WorldConfig='WorldConfig'
-for _,name in {'CombatContexts','CombatContextService','IslandService','HeroShopService','HeroShopPanel','HeroUpgradeService','HeroPromptVisibility'} do services[name]=name end
+for _,name in {'CombatContexts','CombatContextService','IslandService','HeroShopService','HeroShopPanel','HeroUpgradeService','HeroPromptVisibility','PlayerDataService','PlayerDataSchema','WaveService'} do services[name]=name end

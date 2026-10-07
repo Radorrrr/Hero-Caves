@@ -3,6 +3,7 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.WorldConfig)
 
+local Data = require(script.Parent.PlayerDataService)
 local IslandService = {}
 local claimedEvent = Instance.new("BindableEvent")
 local releasingEvent = Instance.new("BindableEvent")
@@ -261,7 +262,7 @@ end
 -- Server-only entry point; no ownership-request remote exists.
 function IslandService.TryClaim(player, islandId)
 	local island = islands[islandId]
-	if not started or not island or not player or player.Parent ~= Players or not insideZone(player, island) then
+	if not started or not island or not player or not Data.IsReady(player) or not insideZone(player, island) then
 		return false, "InvalidClaim"
 	end
 	local existing = playerIslands[player]

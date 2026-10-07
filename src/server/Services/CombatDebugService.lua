@@ -5,6 +5,8 @@ local State = require(script.Parent.CombatDebugState)
 local EnemyService = require(script.Parent.EnemyService)
 local ProgressionService = require(script.Parent.ProgressionService)
 local Contexts = require(script.Parent.CombatContexts)
+local WaveService = require(script.Parent.WaveService)
+local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local CombatDebugService = {}
 local started = false
 local lastRequest, snapshots, playerConnections = {}, {}, {}
@@ -24,6 +26,8 @@ local function publish(player)
 	data:SetAttribute("OwnerUserId", player.UserId)
 	data:SetAttribute("GoldMultiplier", ProgressionService.GetGoldMultiplier(player))
 	data:SetAttribute("TotalDPS", player:GetAttribute("TotalDPS") or 0)
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	data:SetAttribute("PlayerWalkSpeed", humanoid and humanoid.WalkSpeed or 16)
 	for _, id in HeroConfig.HeroOrder do
 		local folder = data[id]
 		local progression = player:FindFirstChild("HeroProgression")
@@ -58,6 +62,25 @@ function CombatDebugService.Start()
 		end
 		snapshots[player] = data
 		playerConnections[player] = player:GetAttributeChangedSignal("CombatStatsRevision"):Connect(function() publish(player) end)
+		local function speed(character)
+			local function apply(humanoid)
+				if player.Parent ~= Players or player.Character ~= character then return end
+				local value = GameConfig.StudioTesting.PlayerWalkSpeed
+				if State.IsAvailable() and type(value) == "number" and value > 0 and value < math.huge then humanoid.WalkSpeed = value end
+				publish(player)
+			end
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then apply(humanoid) else
+				local connection
+				connection = character.ChildAdded:Connect(function(child)
+					if child:IsA("Humanoid") then connection:Disconnect(); apply(child) end
+				end)
+			end
+		end
+		data:SetAttribute("PlayerWalkSpeed", 16)
+		local connection = player.CharacterAdded:Connect(speed)
+		data.Destroying:Connect(function() connection:Disconnect() end)
+		if player.Character then speed(player.Character) end
 		publish(player)
 		data.Parent = player
 	end
@@ -88,6 +111,9 @@ function CombatDebugService.Start()
 			ProgressionService.ResetHero(player, id)
 		elseif action == "ResetEnemyHP" and count == 1 then
 			EnemyService.ResetHealth(Contexts.Get(player))
+		elseif action == "ResetWave" and count == 1 then
+			WaveService.Reset(Contexts.Get(player))
+			publish(player)
 		end
 	end)
 	for _, player in Players:GetPlayers() do initializePlayer(player) end

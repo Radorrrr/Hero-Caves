@@ -55,11 +55,12 @@ print('PASS: supported thumbnail API, six independent correct owner portraits/na
 
 scenarios['headshot-delayed-and-failed-loads']=('',r'''
 local spawn=task.spawn;local queue={}
+local p2=addPlayer(102,'Second') -- Load synchronously; only thumbnail work is deferred below.
 task.spawn=function(fn,...) local args=table.pack(...);table.insert(queue,function() fn(table.unpack(args,1,args.n)) end) end
 local a=claim(p1,1);local island=a.Island;local old=island.OwnerAvatar;local oldImage=old.Headshot
 assert(old.Headshot.Image=='' and old.Headshot.Fallback.Visible and a.CurrentEnemy and active(a,'Knight'))
 islandService.ReleaseIsland(p1)
-local p2=addPlayer(102,'Second');local b=claim(p2,1);local fresh=island.OwnerAvatar
+local b=claim(p2,1);local fresh=island.OwnerAvatar
 assert(#queue==2 and old.destroyed and fresh:GetAttribute('OwnerUserId')==102)
 queue[1]();assert(fresh.Headshot.Image=='' and oldImage.Image=='','stale answer cannot write a reused/removed GUI')
 queue[2]();assert(fresh.Headshot.Image:find('id=102&',1,true) and not fresh.Headshot.Fallback.Visible)

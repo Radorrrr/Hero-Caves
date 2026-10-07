@@ -1,4 +1,5 @@
 local Services = script.Parent.Services
+require(Services.PlayerDataService).Start()
 require(Services.EconomyService).Start()
 require(Services.ProgressionService).Start()
 require(Services.HeroUpgradeService).Start()

@@ -10,6 +10,7 @@ local EconomyService = require(script.Parent.EconomyService)
 local CombatDebugState = require(script.Parent.CombatDebugState)
 local Contexts = require(script.Parent.CombatContexts)
 
+local Data = require(script.Parent.PlayerDataService)
 local ProgressionService = {}
 local playerHeroes = {}
 local resetEvent = Instance.new("BindableEvent")
@@ -174,27 +175,15 @@ local function publish(player)
 	player:SetAttribute("CombatStatsRevision", (player:GetAttribute("CombatStatsRevision") or 0) + 1)
 end
 
-local function startingLevel(heroId)
-	local testing = GameConfig.StudioTesting
-	local requested = RunService:IsStudio() and testing.Enabled and testing.StartingHeroLevels[heroId]
-	if ProgressionMath.IsValidAmount(requested) and requested >= 1 then
-		return math.min(requested, HeroConfig[heroId].MaxLevel)
-	end
-	return 1
-end
-
 local function initializePlayer(player)
-	if playerHeroes[player] then
+	if playerHeroes[player] or not Data.IsReady(player) then
 		return
 	end
 	local folder = Instance.new("Folder")
 	folder.Name = "HeroProgression"
-	local heroes = {}
+	local heroes = Data.GetProfile(player).Data.Heroes
 	playerHeroes[player] = heroes
 	for _, heroId in heroIds do
-		local testing = GameConfig.StudioTesting
-		local owned = HeroConfig[heroId].OwnedByDefault
-			or (RunService:IsStudio() and testing.Enabled and testing.StartingOwnedHeroes[heroId] == true)
 		local replicated = Instance.new("Folder")
 		replicated.Name = heroId
 		local upgrades = Instance.new("Folder")
@@ -209,8 +198,7 @@ local function initializePlayer(player)
 		end
 		quotes.Parent = replicated
 		replicated.Parent = folder
-		heroes[heroId] = {Owned = owned, Level = owned and startingLevel(heroId) or 1,
-			Upgrades = {}, Replicated = replicated}
+		heroes[heroId].Replicated = replicated
 	end
 	publish(player)
 	goldConnections[player] = player:GetAttributeChangedSignal("Gold"):Connect(function()
@@ -224,7 +212,7 @@ function ProgressionService.Refresh(player)
 end
 
 local function beginPurchase(player)
-	if not playerHeroes[player] or player.Parent ~= Players then
+	if not Data.IsReady(player) or not playerHeroes[player] or player.Parent ~= Players then
 		return false, "InvalidPlayer"
 	end
 	local now = time()
@@ -249,6 +237,7 @@ function ProgressionService.BuyHeroLevels(player, heroId, mode)
 	end
 	-- One transaction, one state update, one stat refresh; no per-level remote calls.
 	state.Level += quote.Count
+	Data.MarkDirty(player)
 	publish(player)
 	return true, "LevelPurchased", quote.Count, quote.Cost
 end
@@ -258,12 +247,13 @@ function ProgressionService.BuyHeroLevel(player, heroId)
 end
 
 function ProgressionService.ResetHero(player, heroId)
-	if not CombatDebugState.IsAvailable() or not Contexts.Get(player) or not playerHeroes[player] or player.Parent ~= Players
+	if not Data.IsReady(player) or not CombatDebugState.IsAvailable() or not Contexts.Get(player) or not playerHeroes[player] or player.Parent ~= Players
 		or not validId(heroId) then return false end
 	local state = getState(player, heroId)
 	if not state then return false end
 	state.Level = 1
 	table.clear(state.Upgrades)
+	Data.MarkDirty(player)
 	-- Ownership, gold, other hero progress, wave and enemy are untouched.
 	resetEvent:Fire(player, heroId)
 	publish(player)
@@ -293,6 +283,7 @@ function ProgressionService.BuyUpgrade(player, heroId, upgradeId)
 		return false, "NotEnoughGold"
 	end
 	getState(player, heroId).Upgrades[upgradeId] = true
+	Data.MarkDirty(player)
 	publish(player) -- Refresh all heroes, including targets of global/cross-hero effects.
 	return true, "UpgradePurchased"
 end
@@ -316,7 +307,11 @@ function ProgressionService.PurchaseNextHero(player)
 	end
 	local state = getState(player, heroId)
 	state.Owned = true
-	state.Level = startingLevel(heroId)
+	local testing = GameConfig.StudioTesting
+	local startingLevel = testing.StartingHeroLevels[heroId]
+	state.Level = RunService:IsStudio() and testing.Enabled and ProgressionMath.IsValidAmount(startingLevel)
+		and math.clamp(startingLevel, 1, HeroConfig[heroId].MaxLevel) or 1
+	Data.MarkDirty(player)
 	publish(player)
 	ownedEvent:Fire(player, heroId) -- Stable Instance and ID, not a mutable ownership table.
 	return true, "HeroPurchased", heroId
@@ -331,6 +326,7 @@ function ProgressionService.Start()
 	CombatDebugState.Changed:Connect(publish)
 	Contexts.Changed:Connect(publish)
 	EconomyService.SetGoldMultiplierProvider(ProgressionService.GetGoldMultiplier)
+	Data.RegisterInitializer(initializePlayer)
 	Players.PlayerAdded:Connect(initializePlayer)
 	Players.PlayerRemoving:Connect(function(player)
 		if goldConnections[player] then goldConnections[player]:Disconnect(); goldConnections[player] = nil end

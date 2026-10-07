@@ -1,6 +1,6 @@
 # Idle Hero Simulator
 
-Roblox/Rojo prototype through **Phase 6D.1**: a neutral floating Hub, six
+Roblox/Rojo prototype through **Phase 7**: a neutral floating Hub, six
 claimable floating islands and independent server-authoritative combat for
 every island owner. Each owner has their own heroes, enemy, waves, bosses,
 gold and progression. Joining alone starts no combat.
@@ -8,10 +8,12 @@ gold and progression. Joining alone starts no combat.
 **Phase 6D is implemented:** interact with a physical owned hero to open its
 contextual upgrade menu. Normal gameplay keeps only compact Gold and Total DPS,
 plus reward popups. The separate Hub Hero Shop still discovers Archer -> Mage.
-**Saving/DataStore and Offline Progress are NOT implemented.** Progress is in
-memory and is lost on leaving. The project owner confirmed Phases 6A, 6B, 6C
+**Phase 7 implements persistent Saving/DataStore. Offline Progress is NOT implemented.**
+Studio defaults to isolated in-memory development; enable its separate test store
+explicitly as documented below. The project owner confirmed Phases 6A, 6B, 6C
 and 6C.1 working in real Studio multiplayer tests, and Phase 6D working in real
-Studio testing. New Phase 6D.1 positioning/prompt filtering still needs Studio checks. Reliable 10 Hz claim fallback remains intact.
+Studio testing. The owner reports Phase 6 complete and verified in Studio; Phase 7 requires the
+new persistence/admin Studio checks below. Reliable 10 Hz claim fallback remains intact.
 
 ## Run with Rojo
 
@@ -26,6 +28,219 @@ source/configuration changes: required modules are cached. The server builds
 the prototype geometry and combat models; no binary model/place file is required.
 `default.project.json` maps Shared to ReplicatedStorage, Server to
 ServerScriptService, and Client to StarterPlayerScripts.
+
+## Phase 7 — persistent progression and Studio admin polish
+
+**Phase 7 implemented. Offline Progress NOT implemented; Phase 8 has not begun.**
+The cloud tests below use the actual Luau services with a deterministic Roblox/
+DataStore mock. Real Roblox cloud persistence, shutdown timing, Studio replication,
+physics and UI still require the exact manual tests below.
+
+### Persistent data and namespaces
+
+`GameConfig.Persistence` selects the versioned production store
+**IdleHeroSimulator_PlayerData_v1**, keyed by `Player_<UserId>`. `PlayerDataService`
+is the only DataStore boundary; all writes use `UpdateAsync`. `PlayerDataSchema`
+validates, migrates and serializes profiles. Economy and Progression mutate that
+private profile in memory, then publish display attributes/folders. Client display
+values never become persistence input. Purchases/rewards never call DataStore.
+
+The saved gameplay schema is **SchemaVersion = 1**:
+
+```lua
+{
+    SchemaVersion = 1,
+    Gold = 12345,
+    Wave = 27,
+    Heroes = {
+        Knight = {Owned = true, Level = 50, PurchasedUpgrades = {"SharpenedBlade"}},
+        Archer = {Owned = true, Level = 18, PurchasedUpgrades = {}},
+        Mage = {Owned = false, Level = 1, PurchasedUpgrades = {}},
+    },
+}
+```
+
+While connected, a `Session = {Token = <server-generated GUID>, Expires = <Unix
+seconds>}` field provides lease metadata; it is removed by a successful final
+save. No secrets are needed. No runtime Models/Instances, island allocation,
+positions, cave geometry, enemy HP, boss deadline, attack state, projectiles,
+connections, selection tokens, UI, pause/hero toggles or debug WalkSpeed are saved.
+Damage, boss damage, attack interval/speed, DPS, Gold multiplier and milestone
+effects are reconstructed through existing HeroConfig, ProgressionMath and
+UpgradeEffects formulas, including global/cross-hero effects. Normal fresh data
+is Gold 0, Wave 1, Knight owned at Level 1, Archer/Mage unowned at Level 1,
+and no purchased milestones.
+
+Unversioned/version-0 partial tables reconcile to version 1. Unknown fields,
+heroes and upgrade IDs are dropped; missing/invalid fields use safe defaults.
+Gold is finite, integral and bounded by MaxGold; levels are integral and bounded
+by each hero's MaxLevel. Knight remains owned. Unowned heroes reset to Level 1
+with no upgrades. Upgrade arrays and legacy boolean maps deduplicate known IDs;
+upgrades below their configured unlock level are removed. Wave is bounded to
+1..`MaxSavedWave` (currently 1000) for restored numeric safety. Non-table roots
+and unsupported/future versions reject the load instead of overwriting them.
+Future schema changes need an explicit migration; changing a store name creates
+a separate namespace and does not migrate old records automatically.
+
+### Loading, saving and failure handling
+
+On join, `DataReady=false` and `DataStatus=Loading`. An asynchronous UpdateAsync
+atomically validates/reconciles the record and acquires its 300-second session
+lease. Successful load builds economy, progression and shop state synchronously
+before publishing DataReady=true. Claims, shop purchases, level purchases,
+upgrades and Gold mutation are blocked until ready. Joining starts no combat:
+the loaded Wave is stored privately until an island is claimed. Loading errors,
+an unsupported record or a live foreign session produce `[PlayerData]` server
+warnings and a clear rejoin kick; no writable default profile is substituted.
+
+Gold rewards/spending, unlocks, level purchases, milestone purchases and resolved
+wave changes update memory and increment a dirty revision. Autosave checks each
+profile every **90 + UserId % 15 seconds** (90–104 seconds). Clean gameplay data
+skips unnecessary writes, except lease renewal is still required. Successful
+saves renew the lease; renewal becomes due halfway through its 300 seconds.
+UpdateAsync callbacks do not yield or perform gameplay side effects.
+
+A save captures an immutable gameplay snapshot and its revision before yielding.
+Only one save per profile runs at once; concurrent requests return Busy. A change
+made during a save remains dirty because only the captured revision is marked
+saved. Leaving during an autosave marks the profile closing and drains a final
+snapshot/release after that save. PlayerRemoving is registered before business
+cleanup, so teardown cannot erase the saved wave/hero state. Leaving while loading
+releases any late-acquired lease without activating gameplay. BindToClose marks
+profiles closing, saves loaded players independently, and waits up to **25 seconds**
+for saves/in-flight loads. Failed loads are never saved.
+
+DataStore operations retry at most **3 attempts**, with **1s then 2s** waits.
+A failed active save retains dirty memory and the last durable record. A final
+failed leave/shutdown save logs failure; it cannot guarantee the latest progress.
+An UpdateAsync save must still match the profile's GUID; stale servers cannot
+overwrite a new lease owner. Lost sessions disable gameplay and kick the old
+player. Crashed servers can leave a lease until expiry, so immediate rejoin may
+require waiting up to five minutes. This is a practical session guard, not a full
+commercial profile framework: Roblox calls cannot be cancelled, throttling or
+hard crashes can lose progress since the last successful save, and shutdown's
+platform deadline can interrupt a slow call. No offline time/rewards are tracked.
+
+### Wave restore and RESET WAVE
+
+Claiming an island starts its saved Wave with a newly spawned full-HP enemy and,
+for a boss, a fresh full timer. During a successful kill's spawn delay, the
+resolved **next** Wave is saved; during a boss timeout delay, the resolved previous
+Wave is saved. Rejoining cannot repeatedly collect a resolved kill by saving its
+old display wave. Partial enemy damage and timer remainder are discarded. Rejoin
+always allocates a currently free island and rebuilds its cave/heroes/context.
+
+With `StudioTesting.Enabled=true` in Studio, the existing debug panel now displays
+**PLAYER SPEED** and offers **RESET WAVE**. `PlayerWalkSpeed=32` is configurable;
+finite positive values apply to the current character and every respawn, including
+late-arriving Humanoids. `nil`/`false` preserves normal Roblox speed. Both features
+require IsStudio AND StudioTesting.Enabled; no debug remote is created in production.
+
+RESET WAVE uses the existing validated/throttled Control remote and the sender's
+private active context. It clears pending rewards and transitions, removes the
+old enemy/boss and starts Wave 1. Existing enemy-change handling cancels stale
+windups/projectiles; old target identity checks prevent delayed impacts/rewards.
+Gold, owned heroes, levels, upgrades, island, context and hero instances remain;
+other players' timers, waves and combat remain unchanged. Pause/attack toggles
+retain their existing state. The reset dirties the saved Wave; it is persisted
+by normal saves when isolated Studio DataStore testing is enabled. It produces
+no immediate DataStore write. With no active island, the request is ignored.
+
+### Safe Studio DataStore setup
+
+The default `Persistence.StudioMode="Memory"` deliberately keeps ordinary Studio
+work independent of API access and never touches any DataStore. Each Play session
+starts from normal defaults or the existing StudioTesting starting presets.
+
+To test real saving, publish a **separate test experience**, enable **Game Settings
+→ Security → Enable Studio Access to API Services**, and set StudioMode="DataStore".
+With StudioTesting disabled the namespace is **IdleHeroSimulator_StudioPlayerData_v1**;
+with it enabled the namespace is **IdleHeroSimulator_StudioDebugPlayerData_v1**.
+Both are asserted to differ from production. In DataStore mode StartingGold,
+StartingHeroLevels and StartingOwnedHeroes apply **only to a missing new record**;
+existing loaded values win. Unlocking a new hero while StudioTesting is enabled
+still uses that hero's configured testing starting level. Existing owned heroes
+are not reset. Production always ignores all Studio presets and uses its own
+namespace. StudioMode has no effect on production.
+
+An unpublished place or disabled API access in explicit DataStore mode logs
+bounded load failures and denies play, rather than crashing or replacing data.
+Use Memory mode for normal development. Confirm the same UserId on rejoin;
+local multiplayer's synthetic IDs differ from your account and must be repeated
+consistently. Test actual account identities too. In a published client's Roblox
+session IsStudio is false, so even a test experience uses the production-named
+store **within that separate experience**; it does not exercise Studio controls.
+Never rename the Studio namespace to the production namespace. To clear test
+records use a new clearly named test namespace or remove only the known test
+keys in the separate experience; do not wipe the production store.
+
+### Exact real Studio persistence test (20 steps)
+
+1. Publish the separate test experience and sync this complete project with Rojo.
+2. Enable Studio API access, set StudioMode="DataStore", keep StudioTesting disabled; choose a fresh test namespace/key if defaults must be checked.
+3. Join and confirm DataReady=true/DataStatus=Persistent without load warnings.
+4. Claim an island; confirm one Knight and Wave 1 for a new record.
+5. Earn Gold and confirm the compact HUD/reward popup update normally.
+6. Visit the Hub merchant, buy Archer and confirm immediate own-island spawn.
+7. Interact with Knight and buy levels (at least Level 10).
+8. Buy Sharpened Blade; confirm its purchased label and doubled damage.
+9. Reach a later wave; also repeat once with a boss wave.
+10. Record Gold, resolved Wave, owned heroes, each level and purchased milestone IDs. For an exact unchanged comparison, pause on the server using the Command Bar or use an isolated debug-store test; normal attacks can immediately earn more Gold after rejoin.
+11. Leave/end the session normally; inspect Output for save errors before proceeding.
+12. Start a fresh Studio session with unchanged test namespace/configuration.
+13. Join as the same UserId; confirm there is no live-session-lock error.
+14. Before claiming, check Gold and HeroProgression owned/level/milestone attributes are restored; confirm no Hub combat.
+15. Claim any free island (it need not be the previous island).
+16. Confirm its saved/resolved Wave starts; after a spawn delay save, expect the next wave. A boss has full HP and a fresh full timer.
+17. Confirm only owned heroes spawn, including Archer and excluding unowned Mage.
+18. Open each owned hero menu and confirm restored levels, costs and bulk options.
+19. Confirm purchased milestone labels/effects, derived damage/interval/DPS/Gold multiplier and the merchant's next unowned offer.
+20. Confirm recorded Gold is restored, then repeat with two users holding different Gold/Waves/levels; leaving/rejoining/resetting A must not change B. Check autosave, normal leave and Stop/shutdown Output. Test disabled APIs once in the separate test place and confirm failure denies claims/purchases without overwriting its record.
+
+### Exact real Studio admin test (16 steps)
+
+1. Enable StudioTesting; use Memory mode first, then repeat in the isolated debug DataStore namespace.
+2. Set PlayerWalkSpeed=32 (then also test a different finite positive value).
+3. Join; confirm the panel displays PLAYER SPEED: 32.
+4. Walk around the Hub and bridge; confirm increased character speed.
+5. Reset character through Roblox's normal respawn action.
+6. Confirm the new Humanoid also has configured speed; repeat with nil/false and confirm normal speed.
+7. Claim an island and confirm normal heroes/claim ownership.
+8. Reach a later wave or boss; record Gold, levels, purchased upgrades and ownership. Inspect an Archer/Mage projectile in flight too.
+9. Press RESET WAVE in the debug panel.
+10. Confirm the current enemy/boss disappears, its timer ends and no old projectile impact/reward occurs.
+11. Confirm exactly one fresh full-HP Wave 1 enemy appears; the old pending transition cannot advance it.
+12. Confirm unchanged Gold/levels/upgrades/hero models/island ownership; restore normal attack toggles if previously paused.
+13. Confirm heroes continue attacking and normal kill rewards/wave transitions still work.
+14. Start two clients, claim different islands and reset only A during A's boss/transition.
+15. Confirm B's wave/enemy/HP/timer/Gold/heroes continue independently. In debug DataStore mode, leave/rejoin A and confirm Wave 1 was saved (pause attacks to keep it at 1).
+16. Disable StudioTesting and restart; confirm no speed override/panel/remote. Repeat in a published test experience: production also has no admin controls regardless of config. With no claimed island, RESET WAVE must be inactive/rejected.
+
+### Automated validation and changed files
+
+Run `LUAU_BIN=/path/to/luau python3 tests/phase7.py`: **102 scenarios** = all 78
+Phase 6 regressions plus 24 persistence/admin cases. They cover the exact
+Gold=12345/Wave=27/Knight=50/Archer=18/unowned Mage/SharpenedBlade roundtrip,
+serialization, defaults, partial/legacy/malformed data, future schemas, bounded
+load/save failures, retries, dirty revisions, snapshots, save overlap, leave during
+load/save, session conflicts/loss, autosave/lease renewal/shutdown, resolved wave
+advance/timeout, fresh bosses, actual reward/unlock/level/upgrade roundtrips,
+two-user persistence/isolation, Studio namespaces/presets/production gating,
+WalkSpeed respawn/late Humanoid and RESET WAVE preservation/isolation/persistence.
+
+Created: `src/server/Services/PlayerDataSchema.lua`,
+`src/server/Services/PlayerDataService.lua`, `tests/phase7.py`.
+Modified: `src/shared/GameConfig.lua`, `src/server/main.server.lua`, services
+EconomyService, ProgressionService, IslandService, HeroShopService, WaveService,
+CombatContextService, CombatDebugService, `src/client/CombatDebugPanel.lua`,
+`tests/roblox_mock.luau`, `tests/phase6b.py`, `tests/phase6c1.py`, and this README.
+The deferred thumbnail fixture now loads its second player before queuing only
+thumbnail work; its stale-headshot assertions remain intact.
+
+Cloud validation: all 32 source files compile with Luau 0.741. Rojo 7.7.1
+creates the sourcemap and .rbxlx build; the exported XML contains all 32 scripts
+and the exact persistence module sources, startup, configuration and admin UI.
+No real Roblox DataStore requests were made by automated tests.
 
 ## Phase 6D.1 — left menu and owner-only upgrade prompts
 
@@ -114,8 +329,8 @@ Also leave/reuse an island or recreate a context: new owner prompts must update
 without rejoin; old prompt listeners must not retain stale visibility. Continue
 Phase 6D's single-/two-player regressions below. Cloud tests do not validate actual
 Roblox prompt rendering, metadata replication timing or viewport overlap; those
-require these real Studio checks. **Saving/DataStore and Offline Progress are
-NOT implemented.** No new heroes, map redesign or final UI redesign.
+require these real Studio checks. At Phase 6D.1 these features were absent; Phase 7 adds saving below.
+Offline Progress remains NOT implemented. No new heroes, map redesign or final UI redesign.
 
 ## Phase 6D — interact with a physical hero to upgrade
 
@@ -297,7 +512,8 @@ real modules with deterministic API mocks, not Studio rendering/replication/phys
 Real E/mobile prompt selection, UI overlap/readability, actual thumbnail loading,
 network latency and destruction event timing still require the manual tests above.
 UI is prototype-quality; costs/stats remain rounded by the existing formatter.
-Saving/DataStore, Offline Progress, new heroes and map/art redesign are absent.
+That Phase 6D pass added no saving/offline progress, heroes or map/art redesign.
+Phase 7 adds saving as documented above; offline progress remains absent.
 
 Created: src/server/Services/HeroUpgradeService.lua, tests/phase6d.py.
 Modified: src/server/Services/{HeroService,ProgressionService}.lua,
@@ -629,8 +845,8 @@ Rojo build/XML module validation pass.
 NPC and shop visuals are prototype Parts/UI. Heroes and prices are unchanged;
 there is no Hero 4. Shared HeroConfig metadata is not concealed from exploiters.
 Shop UI can stay open after walking away, but buying requires server distance
-validation. Progression/ownership remain session-only. Phase 6D is implemented
-above; **saving, offline progress and final NPC/UI/map art are not implemented.**
+validation. Progression/ownership were session-only in Phase 6C; Phase 7 now persists them.
+Offline progress and final NPC/UI/map art remain unimplemented.
 
 ## World and island ownership
 
@@ -1042,7 +1258,7 @@ contain Knight and a Wave 1 enemy, HasCombatArea must be true and TotalDPS about
 Island 2 and gets its separate Wave 1/Knight/enemy. Continue with the full
 single/two-player tests above, including owner-only gold/projectiles and release.
 The cloud regression is not a completed Studio retest; rendering/network/physics
-confirmation for new Phase 6D.1 changes still requires Studio.
+confirmation for Phase 7 requires the persistence/admin Studio tests above.
 
 
 To verify the event boundary in the **real Roblox engine**, paste

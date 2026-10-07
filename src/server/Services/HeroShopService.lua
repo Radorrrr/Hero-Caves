@@ -7,6 +7,7 @@ local Progression = require(script.Parent.ProgressionService)
 local Islands = require(script.Parent.IslandService)
 local Contexts = require(script.Parent.CombatContexts)
 local Heroes = require(script.Parent.HeroService)
+local Data = require(script.Parent.PlayerDataService)
 local HeroShopService = {}
 local records, lastRequest = {}, {}
 local started, serial = false, 0
@@ -44,7 +45,7 @@ local function initialize(player)
 end
 
 local function nearMerchant(player)
-	if not player or player.Parent ~= Players or not prompt or not prompt.Enabled or not prompt.Parent then return false end
+	if not player or not Data.IsReady(player) or not prompt or not prompt.Enabled or not prompt.Parent then return false end
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -104,6 +105,7 @@ function HeroShopService.Start()
 		if record then record.Folder:Destroy(); records[player] = nil end
 		lastRequest[player] = nil
 	end)
+	Data.RegisterInitializer(publish)
 	Progression.HeroOwned:Connect(function(player) publish(player) end)
 	Islands.HeroShopChanged:Connect(connectPrompt)
 	connectPrompt(Islands.GetHeroShopPrompt())

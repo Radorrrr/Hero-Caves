@@ -4,15 +4,18 @@ local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local EnemyService = require(script.Parent.EnemyService)
 local Contexts = require(script.Parent.CombatContexts)
 
+local Data = require(script.Parent.PlayerDataService)
 local WaveService = {}
 local function startWave(context, wave)
 	if not Contexts.IsActive(context) then return end
 	context.CurrentWave = wave
+	Data.SetWave(context.Player, wave)
 	context.Folder:SetAttribute("Wave", wave)
 	context.Player:SetAttribute("IdleHeroSimulatorWave", wave)
 	EnemyService.Spawn(context, wave, wave % GameConfig.BossEveryWaves == 0)
 end
 local function scheduleWave(context, wave)
+	Data.SetWave(context.Player, wave) -- Save the resolved next wave even during its spawn delay.
 	context.PendingWave = wave
 	context.NextSpawnAt = time() + GameConfig.WaveDelay
 end
@@ -21,7 +24,7 @@ function WaveService.GetCurrentWave(context)
 end
 function WaveService.Start(context)
 	if not Contexts.IsActive(context) or context.WaveConnection then return end
-	startWave(context, 1)
+	startWave(context, Data.GetWave(context.Player))
 	context.WaveConnection = RunService.Heartbeat:Connect(function()
 		if not Contexts.IsActive(context) then return end
 		if context.PendingWave then
@@ -42,6 +45,14 @@ function WaveService.Start(context)
 			EnemyService.UpdateDisplay(context)
 		end
 	end)
+end
+function WaveService.Reset(context)
+ if not Contexts.IsActive(context) then return false end
+ context.PendingWave, context.NextSpawnAt = nil, nil
+ table.clear(context.PendingRewards)
+ EnemyService.Remove(context)
+ startWave(context, 1)
+ return true
 end
 function WaveService.Stop(context)
 	if context.WaveConnection then context.WaveConnection:Disconnect(); context.WaveConnection = nil end

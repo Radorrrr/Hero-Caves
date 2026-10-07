@@ -15,7 +15,7 @@ function CombatDebugPanel.Start(gui)
 	panel.AnchorPoint = Vector2.new(1, 0)
 	panel.Position = UDim2.new(1, -16, 0, 84)
 	panel.Size = UDim2.new(0, 320, 0.8, -84)
-	panel.CanvasSize = UDim2.fromOffset(0, 780)
+	panel.CanvasSize = UDim2.fromOffset(0, 850)
 	panel.ScrollBarThickness = 6
 	panel.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
 	panel.BorderSizePixel = 0
@@ -43,6 +43,9 @@ function CombatDebugPanel.Start(gui)
 	local pause = item("TextButton", "Pause", 132, 32)
 	local reset = item("TextButton", "ResetEnemyHP", 170, 32)
 	reset.Text = "Reset current enemy HP"
+	local resetWave = item("TextButton", "ResetWave", 208, 32)
+	resetWave.Text = "RESET WAVE"
+	local speed = item("TextLabel", "PlayerSpeed", 246, 24)
 	local labels, buttons = {}, {}
 	local lastRequest = -math.huge
 	local function request(...)
@@ -53,8 +56,9 @@ function CombatDebugPanel.Start(gui)
 	end
 	pause.Activated:Connect(function() request("SetPaused", not data:GetAttribute("Paused")) end)
 	reset.Activated:Connect(function() request("ResetEnemyHP") end)
+	resetWave.Activated:Connect(function() request("ResetWave") end)
 	for index, id in HeroConfig.HeroOrder do
-		local y = 212 + (index - 1) * 186
+		local y = 282 + (index - 1) * 186
 		labels[id] = item("TextLabel", id .. "Stats", y, 106)
 		buttons[id] = item("TextButton", id .. "Toggle", y + 108, 32)
 		local resetHero = item("TextButton", id .. "Reset", y + 146, 32)
@@ -66,6 +70,7 @@ function CombatDebugPanel.Start(gui)
 		end)
 	end
 	local function render()
+		speed.Text = "PLAYER SPEED: " .. tostring(data:GetAttribute("PlayerWalkSpeed") or 16)
 		context.Text = not data:GetAttribute("Active") and "NO ACTIVE COMBAT AREA\nClaim an island to start combat." or string.format("Wave %s · Boss %s\nEnemy %s / %s HP\nGold Multiplier: x%.2f · Total DPS: %s\nPlayer: %s",
 			tostring(data:GetAttribute("Wave")), data:GetAttribute("IsBoss") and "Yes" or "No",
 			NumberFormatter.Format(data:GetAttribute("EnemyHP")), NumberFormatter.Format(data:GetAttribute("EnemyMaxHP")),

@@ -63,10 +63,10 @@ function CombatContextService.StartCombat(player, island)
 	local context
 	local success, reason = xpcall(function()
 		context = Contexts.Create(player, island)
-		diagnostic("Context created: " .. context.Id .. "; starting Wave 1")
+		diagnostic("Context created: " .. context.Id .. "; restoring saved wave")
 		WaveService.Start(context)
 		HeroService.Start(context)
-		assert(context.CurrentEnemy and context.HeroesById.Knight, "Wave 1 enemy or Knight failed to spawn")
+		assert(context.CurrentEnemy and context.HeroesById.Knight, "Restored wave enemy or Knight failed to spawn")
 		-- Publish after successful physical startup as well as on registry changes.
 		ProgressionService.Refresh(player)
 	end, debug.traceback)

@@ -8,25 +8,21 @@ local EnemyService = require(script.Parent.EnemyService)
 local Contexts = require(script.Parent.CombatContexts)
 
 local EconomyService = {}
-local balances = {}
+local Data = require(script.Parent.PlayerDataService)
+local initialized = {}
 local started = false
 local goldAwarded = nil
 local goldMultiplierProvider = function() return 1 end
 
 local function initializePlayer(player)
-	if balances[player] == nil then
-		local testing = GameConfig.StudioTesting
-		local startingGold = 0
-		if RunService:IsStudio() and testing.Enabled and ProgressionMath.IsValidAmount(testing.StartingGold) then
-			startingGold = testing.StartingGold
-		end
-		balances[player] = startingGold
-		player:SetAttribute("Gold", startingGold)
-	end
+ if not Data.IsReady(player) or initialized[player] then return end
+ initialized[player] = true
+ player:SetAttribute("Gold", Data.GetProfile(player).Data.Gold)
 end
 
 function EconomyService.GetGold(player)
-	return balances[player]
+ local profile = Data.IsReady(player) and Data.GetProfile(player)
+ return profile and profile.Data.Gold or nil
 end
 
 function EconomyService.SetGoldMultiplierProvider(provider)
@@ -38,11 +34,11 @@ function EconomyService.EarnGold(player, baseAmount)
 	if not ProgressionMath.IsValidAmount(baseAmount) then
 		return false
 	end
-	local before = balances[player]
+	local before = EconomyService.GetGold(player)
 	if before == nil then return false end
 	local success = EconomyService.AddGold(player,
 		ProgressionMath.RoundValue(baseAmount * goldMultiplierProvider(player)))
-	local awarded = balances[player] - before
+	local awarded = EconomyService.GetGold(player) - before
 	if success and awarded > 0 and goldAwarded then
 		goldAwarded:FireClient(player, awarded)
 	end
@@ -50,17 +46,18 @@ function EconomyService.EarnGold(player, baseAmount)
 end
 
 function EconomyService.CanAfford(player, amount)
-	local gold = balances[player]
+	local gold = EconomyService.GetGold(player)
 	return gold ~= nil and ProgressionMath.IsValidAmount(amount) and gold >= amount
 end
 
 function EconomyService.AddGold(player, amount)
-	local gold = balances[player]
+	local gold = EconomyService.GetGold(player)
 	if gold == nil or not ProgressionMath.IsValidAmount(amount) then
 		return false
 	end
-	balances[player] = math.min(gold + amount, GameConfig.Economy.MaxGold)
-	player:SetAttribute("Gold", balances[player])
+	Data.GetProfile(player).Data.Gold = math.min(gold + amount, GameConfig.Economy.MaxGold)
+	Data.MarkDirty(player)
+	player:SetAttribute("Gold", EconomyService.GetGold(player))
 	return true
 end
 
@@ -68,8 +65,9 @@ function EconomyService.SpendGold(player, amount)
 	if not EconomyService.CanAfford(player, amount) then
 		return false
 	end
-	balances[player] -= amount
-	player:SetAttribute("Gold", balances[player])
+	Data.GetProfile(player).Data.Gold -= amount
+	Data.MarkDirty(player)
+	player:SetAttribute("Gold", EconomyService.GetGold(player))
 	return true
 end
 
@@ -81,9 +79,10 @@ function EconomyService.Start()
 	goldAwarded = Instance.new("RemoteEvent")
 	goldAwarded.Name = "IdleHeroSimulatorGoldAwarded"
 	goldAwarded.Parent = ReplicatedStorage
+	Data.RegisterInitializer(initializePlayer)
 	Players.PlayerAdded:Connect(initializePlayer)
 	Players.PlayerRemoving:Connect(function(player)
-		balances[player] = nil
+		initialized[player] = nil
 	end)
 	for _, player in Players:GetPlayers() do
 		initializePlayer(player)
