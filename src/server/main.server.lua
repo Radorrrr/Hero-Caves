@@ -4,6 +4,7 @@ local HeroService = require(Services.HeroService)
 local EconomyService = require(Services.EconomyService)
 local ProgressionService = require(Services.ProgressionService)
 
+require(Services.IslandService).Start()
 EconomyService.Start()
 ProgressionService.Start()
 WaveService.Start()

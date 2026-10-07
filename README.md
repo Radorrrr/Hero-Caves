@@ -2,7 +2,8 @@
 
 Server-side Roblox/Rojo prototype: one stationary enemy per wave, replicated
 health display, exponential health scaling, timed bosses, Knight/Archer/Mage,
-a hero shop, personal gold, hero levels and hero-specific milestone upgrades.
+a hero shop, personal gold, hero levels and hero-specific milestone upgrades,
+plus a temporary central Hub and six claimable player islands.
 No persistence, final models or client damage system is implemented.
 
 ## Rojo and Studio
@@ -14,8 +15,8 @@ rojo serve default.project.json
 ```
 
 Connect the Rojo Studio plugin to the server and sync into a test place, then
-press **Play**. In a blank place, add a Baseplate and SpawnLocation in Studio
-for the player to stand on. The server creates the anchored enemy at
+press **Play**. Phase 6A now generates its own Hub, six islands, bridges and spawn pads.
+A separate Baseplate/SpawnLocation is no longer required. The server creates the anchored enemy at
 `Vector3.new(0, 4, -15)`; no model or place files are needed in this repository.
 View the enemy's BillboardGui and server Output while testing.
 
@@ -59,7 +60,7 @@ flash the enemy. The old automatic test attacker and its settings are removed.
 ### Studio checks
 
 1. Pull the latest GitHub changes, run Rojo, sync all source and start Play.
-   Use a floor with its top at Y=0, or adjust `Knight.SlotOffset.Y` to your floor.
+   The generated Hub surface is at Y=0, matching the existing shared combat slots.
 2. Find exactly one Knight in `Workspace.HeroCavesHeroes`. Check head, helmet,
    torso, arms, legs and sword. It should face the slime without walking.
 3. Watch a swing on Wave 2: HP stays unchanged during anticipation, then drops
@@ -570,4 +571,137 @@ automatic upgrades, private-state/payload/rate-limit protection, reset isolation
 and effect removal, preserved ownership/gold/wave/enemy, UI mode cycling,
 reset projectile cancellation and no duplicate dispatcher. All Luau compiles,
 Rojo sourcemap and relative require paths are checked. Actual rendering and
-replication must still be verified in Roblox Studio. Phase 6 is not included.
+replication must still be verified in Roblox Studio. Bulk leveling and hero resets were completed before Phase 6A.
+
+
+## Phase 6A — central Hub and six claimable islands
+
+The server generates `Workspace.HeroCavesWorld` from `src/shared/WorldConfig.lua`:
+one 88x88 Hub, six 64x64 islands on a 150-stud radius at equal 60-degree spacing,
+and six 12-stud-wide bridges. Platform/bridge tops share Y=0. Island 1 is north
+of the Hub; numbering proceeds clockwise to Island 6. Everything is anchored,
+temporary Parts. Bridges make claiming reachable by walking without a teleport,
+claim button or flight system. This adds a playable floor to a blank place.
+
+WorldConfig controls Hub position/size/spawn, island count/radius/size, starting
+angle, optional angular spacing, bridges, zone size/offset and marker offsets.
+Leaving AngularSpacingDegrees=nil derives `360 / IslandCount`. All islands use
+the same generator; additional named hero markers need only another HeroSlots
+entry. Changing size/radius should preserve sufficient bridge/zone clearance.
+
+`IslandService` owns the server-only island records and player-to-island map.
+A yellow transparent **ClaimZone** and **UNCLAIMED** sign identify each free island.
+On Touched, the server resolves the current player's character and checks a live
+Humanoid with its root physically inside the oriented ClaimZone. It verifies the
+island is free and the player has no island, then writes both ownership mappings
+without yielding. Near-simultaneous entrants therefore cannot both win: later
+callbacks observe the first completed claim. Repeated body-part touches cannot
+create another cave or island. No client ownership-request remote exists;
+replicated IslandId/OwnerUserId attributes are display data, not ownership state.
+
+Successful claim shows `<DisplayName>'s Cave`, changes the zone to green, creates
+a four-part CavePlaceholder, and selects that island's PlayerSpawn for future
+respawns. Claiming does not teleport the walking player. Brief client feedback
+reports success, an already-owned island, an occupied island, or full capacity;
+notifications are limited to one per player per second to avoid touch spam.
+`HeroCavesIslandFeedback` is server-to-client only, with no OnServerEvent handler.
+
+New players always start on the Hub. Their RespawnLocation is assigned server-side,
+and a CharacterAdded handler positions the loaded character at the appropriate
+spawn (Hub when unowned, own island when owned). Respawning neither releases nor
+claims an island and does not duplicate its cave. Stale character callbacks check
+player presence, character identity and service generation before positioning.
+
+When an owner leaves, IslandService clears both ownership mappings, resets the
+sign/zone/OwnerUserId, destroys the cave, clears the player's IslandId and spawn
+reference, and disconnects their character listener. The persistent zone listener
+remains available for the next claimant. Rejoining starts unowned at the Hub;
+there is no saving. With all six islands occupied, additional players spawn at
+the Hub, receive unavailable feedback when entering an occupied zone, and cannot
+replace an owner. They can claim a freed island once an owner leaves. Manual
+visits to islands are allowed; occupancy is not an access-control system.
+
+### Generated marker structure
+
+```text
+Workspace.HeroCavesWorld
+  Hub
+    Platform
+    PlayerSpawn                   (SpawnLocation)
+  Bridges
+    Bridge1 ... Bridge6
+  Islands
+    Island1 ... Island6
+      Platform
+      Markers
+        ClaimZone                 (visible non-colliding touch volume + sign)
+        PlayerSpawn               (SpawnLocation)
+        CavePosition              (invisible anchored marker Part)
+        EnemyPosition             (invisible anchored marker Part)
+        KnightSlot                (invisible anchored marker Part)
+        ArcherSlot                (invisible anchored marker Part)
+        MageSlot                  (invisible anchored marker Part)
+      CavePlaceholder             (only while claimed)
+```
+
+Island models expose `IslandId` and `OwnerUserId` (0 means unclaimed); players
+expose `IslandId` only while owned. Server APIs are `GetIsland(player)`,
+`GetIslandOwner(id)` and `GetSpawnLocation(player)`. `TryClaim(player,id)` is
+server-only and still validates physical presence. Start is idempotent; Stop
+releases ownership/connections and destroys only its generated world/notification
+remote. Existing combat folders and progression remain independent.
+
+**Combat is still shared temporarily on the Hub at its original position.**
+Claiming a cave does not move/spawn heroes, enemies, waves or personal combat.
+Phase 6B will perform that separate refactor. The hero upgrade UI and existing
+Studio debug tools are unchanged; the debug panel still follows the shared
+combat owner, independently of island ownership. There is no shop NPC, cave
+upgrade system, DataStore, matchmaking, new hero or final art in Phase 6A.
+
+### Exact Studio test procedure
+
+1. Pull the latest source, run `rojo serve default.project.json`, sync and restart
+   Play. The new WorldConfig/IslandService/islands client script must all sync.
+   Remove any manually added broad Baseplate if you want to inspect the floating
+   layout unobstructed; the generated world supplies the floor. Existing manual
+   spawn pads are not deleted, but server spawn assignment uses the generated pads.
+2. Confirm initial spawn on the blue Hub pad, exactly six evenly spaced islands
+   and six continuous walkable bridges. Shared Knight/enemy combat remains near
+   the center of the Hub. Use a desktop viewport to inspect current prototype HUD.
+3. Walk across a bridge and through a yellow zone. It should turn green, display
+   your DisplayName, show claim feedback and create a basic cave. Check the player
+   IslandId and island OwnerUserId in Explorer. Walk into a second free zone:
+   it remains UNCLAIMED and the feedback says you already own an island.
+4. Reset your character: respawn at your owned island with the same ownership and
+   one cave. In a fresh unowned client, reset: respawn at the Hub. Inspect all seven
+   named markers under each island's Markers folder; no personal combat activates.
+5. Use Studio **Test -> Server & Clients** with two players. Have both enter the
+   same free zone close together: only one owns it. The loser can claim a different
+   free island. Stop the owner client: that island returns to UNCLAIMED and the
+   cave disappears. Another unowned client can enter and claim it.
+6. For capacity, start a local test with seven clients if your Studio/resources
+   support it. Six clients claim distinct islands; the seventh stays unassigned
+   and spawns at Hub. Enter an occupied zone for the full-capacity notification.
+   Disconnect one owner, then claim the freed island with the seventh client.
+7. Run the existing purchases/bulk modes, boss waves, DPS/gold notifications and
+   Studio pause/reset tests. For debug controls set StudioTesting.Enabled=true
+   and restart Play; restore false afterwards. Island ownership must not change
+   hero levels, gold, wave, shared combat ownership or debug behavior.
+
+### Verification and limits
+
+42 standalone Luau simulations passed using real application modules with mocked
+Roblox APIs: all 37 earlier regressions plus world geometry/markers/bridges,
+validated physical claims and claim races, one-to-one ownership, displays/caves,
+Hub/owner respawn, release/reclaim/rejoin, listener cleanup and Stop/Start,
+six-island capacity/feedback, and config-driven eight-island/extra-slot generation.
+All sources compile; Rojo sourcemap and relative requires are validated. These
+simulations do not verify real Touched physics, avatar loading, networking or
+visual layout in Studio; use the manual procedure above for those checks.
+
+The temporary bridges have no railings. Falling uses normal Roblox character
+respawn; no flight/teleport/matchmaking system was added. Ownership is session-only
+and depends on server-observed character movement; this is not an anti-teleport
+movement validator. Island number/radius/slot configuration is reusable, but final
+spacing, cave visuals and future combat positions will need tuning later.
+Phase 6B is not implemented.
