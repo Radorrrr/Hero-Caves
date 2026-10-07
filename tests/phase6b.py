@@ -7,7 +7,7 @@ import json, os, subprocess, tempfile
 root=Path(__file__).resolve().parents[1]
 old={'scenarios':json.loads((root/'tests/progression_regressions.json').read_text())}
 mock=(root/'tests/roblox_mock.luau').read_text()
-modules=[('GameConfig','src/shared/GameConfig.lua'),('EnemyConfig','src/shared/EnemyConfig.lua'),('HeroConfig','src/shared/HeroConfig.lua'),('WorldConfig','src/shared/WorldConfig.lua'),('NumberFormatter','src/shared/NumberFormatter.lua'),('ProgressionMath','src/server/ProgressionMath.lua'),('UpgradeEffects','src/server/UpgradeEffects.lua'),('CombatContexts','src/server/Services/CombatContexts.lua'),('CombatDebugState','src/server/Services/CombatDebugState.lua'),('EnemyService','src/server/Services/EnemyService.lua'),('WaveService','src/server/Services/WaveService.lua'),('EconomyService','src/server/Services/EconomyService.lua'),('ProgressionService','src/server/Services/ProgressionService.lua'),('KnightRig','src/server/Heroes/KnightRig.lua'),('RangedRig','src/server/Heroes/RangedRig.lua'),('CombatService','src/server/Services/CombatService.lua'),('HeroService','src/server/Services/HeroService.lua'),('IslandService','src/server/Services/IslandService.lua'),('HeroShopService','src/server/Services/HeroShopService.lua'),('CombatContextService','src/server/Services/CombatContextService.lua'),('CombatDebugService','src/server/Services/CombatDebugService.lua'),('HeroShopPanel','src/client/HeroShopPanel.lua'),('GoldPopup','src/client/GoldPopup.lua'),('CombatDebugPanel','src/client/CombatDebugPanel.lua')]
+modules=[('GameConfig','src/shared/GameConfig.lua'),('EnemyConfig','src/shared/EnemyConfig.lua'),('HeroConfig','src/shared/HeroConfig.lua'),('WorldConfig','src/shared/WorldConfig.lua'),('NumberFormatter','src/shared/NumberFormatter.lua'),('ProgressionMath','src/server/ProgressionMath.lua'),('UpgradeEffects','src/server/UpgradeEffects.lua'),('CombatContexts','src/server/Services/CombatContexts.lua'),('CombatDebugState','src/server/Services/CombatDebugState.lua'),('EnemyService','src/server/Services/EnemyService.lua'),('WaveService','src/server/Services/WaveService.lua'),('EconomyService','src/server/Services/EconomyService.lua'),('ProgressionService','src/server/Services/ProgressionService.lua'),('KnightRig','src/server/Heroes/KnightRig.lua'),('RangedRig','src/server/Heroes/RangedRig.lua'),('CombatService','src/server/Services/CombatService.lua'),('HeroUpgradeService','src/server/Services/HeroUpgradeService.lua'),('HeroService','src/server/Services/HeroService.lua'),('IslandService','src/server/Services/IslandService.lua'),('HeroShopService','src/server/Services/HeroShopService.lua'),('CombatContextService','src/server/Services/CombatContextService.lua'),('CombatDebugService','src/server/Services/CombatDebugService.lua'),('HeroShopPanel','src/client/HeroShopPanel.lua'),('GoldPopup','src/client/GoldPopup.lua'),('CombatDebugPanel','src/client/CombatDebugPanel.lua')]
 common=mock
 for name,path in modules:common+=f'modules.{name}=(function()\nlocal script={{Parent=services}}\n'+(root/path).read_text()+'\nend)()\n'
 common+='''
@@ -72,6 +72,21 @@ local remote=storage.IdleHeroSimulatorRemotes.BuyHeroLevel
 local upgradeRemote=storage.IdleHeroSimulatorRemotes.BuyUpgrade
 local heroRemote=storage.IdleHeroSimulatorRemotes.PurchaseNextHero
 local shop=modules.HeroShopService
+local upgrades=modules.HeroUpgradeService
+local function interact(player,id)
+ local context=manager.GetContext(player)
+ local hero=context and active(context,id)
+ if not hero then return false end
+ if not player.Character then character(player) end
+ player.Character:PivotTo(hero.Model.PrimaryPart.CFrame)
+ hero.UpgradePrompt.Triggered:Fire(player)
+ return player.HeroUpgradeSelection:GetAttribute('Token')
+end
+local function contextualRequest(event,player,...)
+ local args=table.pack(...)
+ args.n+=1;args[args.n]=player.HeroUpgradeSelection:GetAttribute('Token')
+ event.OnServerEvent:Fire(player,table.unpack(args,1,args.n))
+end
 local function visitShop(player)
  if not player.Character then character(player) end
  local prompt=islandService.GetHeroShopPrompt()
@@ -88,6 +103,11 @@ scenarios={}
 for name in ['milestones','security','bulk-x1','bulk-x10','bulk-x25','bulk-x100','partial-max','next-1','next-10','next-17','next-25','next-72','next-149','next-partial-config','bulk-security','shop-security']:
  before,test=old['scenarios'][name]
  test='local context=claim(p1,1)\n'+test
+ if 'OnServerEvent' in test and name!='shop-security':
+  # Keep real physical heroes/selection while preventing attacks in formula/security fixtures.
+  test=test.replace('heroes.Stop()', 'context.HeroConnection:Disconnect();context.HeroConnection=nil;interact(p1,\'Knight\')')
+  test=test.replace('upgradeRemote.OnServerEvent:Fire(p1,', 'contextualRequest(upgradeRemote,p1,')
+  test=test.replace('event.OnServerEvent:Fire(p1,', 'contextualRequest(event,p1,')
  test=test.replace('heroes.Stop()','heroes.Stop(context)').replace('heroes.Start()','heroes.Start(context)')
  test=test.replace('enemies.GetActiveEnemy()','enemies.GetActiveEnemy(context)').replace('enemies.Damage(','enemies.Damage(context,').replace('enemies.Spawn(','enemies.Spawn(context,')
  test=test.replace('waves.GetCurrentWave()','waves.GetCurrentWave(context)')
@@ -107,8 +127,8 @@ assert((context.CurrentEnemy.Model.PrimaryPart.Position-context.Island.Markers.E
 assert(context.CurrentEnemy.Health==20 and connected()==3)
 manager.StartCombat(p1,context.Island);islandService.Claimed:Fire(p1,context.Island.Model);manager.Start()
 assert(manager.GetContext(p1)==context and connected()==3 and alive('Model','Knight')==1)
-local panel=playerGui.IdleHeroSimulatorProgression.Panel
-assert(panel.CombatOwner.Text:find('Your heroes fight',1,true))
+assert(not playerGui.IdleHeroSimulatorProgression.Panel.Visible)
+assert(playerGui.IdleHeroSimulatorProgression.TotalDPS.Text=='Total DPS\n'..modules.NumberFormatter.Format(p1:GetAttribute('TotalDPS')))
 validateContext(context)
 print('PASS: neutral Hub/no combat before claim, marker-driven personal wave1/Knight, no shared folders, active UI/DPS and duplicate-claim/start safety')
 ''')
@@ -225,7 +245,7 @@ print('PASS: local/global/cross/boss/speed/gold modifiers, DPS totals, exact com
 scenarios['shop-before-after-claim']=('modules.GameConfig.StudioTesting.Enabled=true\nmodules.GameConfig.StudioTesting.StartingGold=2000\n',ui+r'''
 local p2=addPlayer(102,'Second');local b=claim(p2,4)
 local panel=playerGui.IdleHeroSimulatorProgression.Panel
-assert(not panel.HeroTabs.Archer.Visible and not panel.HeroTabs.Mage.Visible)
+assert(not panel.Visible and not panel:FindFirstChild('HeroTabs'))
 visitShop(p1);playerGui.IdleHeroSimulatorHeroShop.Panel.Buy.Activated:Fire()
 assert(not progression.OwnsHero(p1,'Archer') and not manager.GetContext(p1))
 assert(alive('Model','Archer')==0 and economy.GetGold(p1)==2000)
@@ -234,7 +254,7 @@ assert(#a.Heroes==2 and active(a,'Archer') and #b.Heroes==1)
 visitShop(p1);advance(.3);playerGui.IdleHeroSimulatorHeroShop.Panel.Buy.Activated:Fire();advance(.01)
 assert(progression.OwnsHero(p1,'Mage') and active(a,'Mage') and #a.Heroes==3 and not active(b,'Mage'))
 local before=progression.GetHeroLevel(p1,'Archer')
-panel.HeroTabs.Archer.Activated:Fire();advance(.3);panel.LevelUp.Activated:Fire()
+interact(p1,'Archer');advance(.3);panel.LevelUp.Activated:Fire()
 assert(progression.GetHeroLevel(p1,'Archer')==before+1 and progression.GetHeroLevel(p2,'Archer')==1)
 heroes.Start(a);heroes.Start(b);manager.StartCombat(p1,a.Island);assert(connected()==5)
 validateContext(a);validateContext(b)
@@ -477,7 +497,7 @@ local a=claim(p1,1)
 assert(a and a.Island==islandService.GetIsland(p1) and a.Island.Model==original.Model)
 assert(a.CurrentWave==1 and a.CurrentEnemy and active(a,'Knight'))
 assert(p1:GetAttribute('HasCombatArea') and math.abs(p1:GetAttribute('TotalDPS')-20/1.3)<1e-8)
-assert(playerGui.IdleHeroSimulatorProgression.Panel.CombatOwner.Text:find('Your heroes fight',1,true))
+assert(not playerGui.IdleHeroSimulatorProgression.Panel.Visible and p1:GetAttribute('HasCombatArea'))
 local p2=addPlayer(102,'Second');assert(not manager.GetContext(p2) and p2:GetAttribute('TotalDPS')==0)
 local b=claim(p2,2)
 assert(b and b.Island==islandService.GetIsland(p2) and b~=a and b.CurrentWave==1)

@@ -121,7 +121,7 @@ instanceMt.__index=function(o,k)
 
  if k=='Destroy' then return function(self)
   for _,child in objects do if child.Parent==self then child:Destroy() end end
-  self.Data.Parent=nil; self.destroyed=true
+  self.Parent=nil; self.destroyed=true
  end end
  if o.Data[k] ~= nil then return o.Data[k] end
  for _,child in objects do if child.Parent==o and child.Name==k then return child end end
@@ -129,6 +129,12 @@ instanceMt.__index=function(o,k)
 end
 instanceMt.__newindex=function(o,k,v)
  o.Data[k]=v
+ if k=='Parent' then
+  if o.AncestryChanged then o.AncestryChanged:Fire(o,v) end
+  for _,child in objects do
+   if child:IsDescendantOf(o) and child.AncestryChanged then child.AncestryChanged:Fire(child,child.Parent) end
+  end
+ end
  if k=='Parent' and v then
   local current=v
   while current do
@@ -170,7 +176,7 @@ function Instance.new(class)
  elseif class=='ProximityPrompt' then o.Triggered=signal()
  elseif class=='TextButton' then o.Activated=signal() end
 
- o.AttributeChanged=signal();o.DescendantAdded=signal()
+ o.AttributeChanged=signal();o.DescendantAdded=signal();o.AncestryChanged=signal()
  if class=='Part' or class=='SpawnLocation' then o.Touched=signal() end
  if class=='Player' then o.CharacterAdded=signal() end
  table.insert(objects,o)
@@ -265,4 +271,4 @@ function players:GetPlayerFromCharacter(character)
  for _,p in self.List do if p.Character==character then return p end end
 end
 shared.WorldConfig='WorldConfig'
-for _,name in {'CombatContexts','CombatContextService','IslandService','HeroShopService','HeroShopPanel'} do services[name]=name end
+for _,name in {'CombatContexts','CombatContextService','IslandService','HeroShopService','HeroShopPanel','HeroUpgradeService'} do services[name]=name end

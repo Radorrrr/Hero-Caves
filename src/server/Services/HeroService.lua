@@ -6,6 +6,7 @@ local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local EnemyService = require(script.Parent.EnemyService)
 local CombatService = require(script.Parent.CombatService)
 local ProgressionService = require(script.Parent.ProgressionService)
+local HeroUpgradeService = require(script.Parent.HeroUpgradeService)
 local KnightRig = require(script.Parent.Parent.Heroes.KnightRig)
 local RangedRig = require(script.Parent.Parent.Heroes.RangedRig)
 
@@ -125,7 +126,9 @@ local function synchronizeOwnedHeroes(context, now)
 	local activeHeroes, heroesById = context.Heroes, context.HeroesById
 	for index = #activeHeroes, 1, -1 do
 		local hero = activeHeroes[index]
-		if hero.Owner ~= owner or not ProgressionService.OwnsHero(owner, hero.Id) or not hero.Model.Parent then
+		if hero.Owner ~= owner or not ProgressionService.OwnsHero(owner, hero.Id)
+			or not hero.Model:IsDescendantOf(context.HeroFolder) then
+			HeroUpgradeService.Detach(hero)
 			hero.Rig:Destroy()
 			heroesById[hero.Id] = nil
 			table.remove(activeHeroes, index)
@@ -152,6 +155,7 @@ local function synchronizeOwnedHeroes(context, now)
 			idle(hero)
 			heroesById[heroId] = hero
 			table.insert(activeHeroes, hero)
+			HeroUpgradeService.Attach(hero)
 			if GameConfig.DebugLogging then
 				print("[HeroService] Spawned " .. config.Name .. "; independent combat active")
 			end
@@ -193,7 +197,7 @@ function HeroService.Stop(context)
 	if context.HeroConnection then context.HeroConnection:Disconnect(); context.HeroConnection = nil end
 	for _, connection in context.HeroConnections do connection:Disconnect() end
 	table.clear(context.HeroConnections)
-	for _, hero in context.Heroes do idle(hero); hero.Rig:Destroy() end
+	for _, hero in context.Heroes do HeroUpgradeService.Detach(hero); idle(hero); hero.Rig:Destroy() end
 	table.clear(context.Heroes)
 	table.clear(context.HeroesById)
 end

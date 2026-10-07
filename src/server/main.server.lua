@@ -1,6 +1,7 @@
 local Services = script.Parent.Services
 require(Services.EconomyService).Start()
 require(Services.ProgressionService).Start()
+require(Services.HeroUpgradeService).Start()
 -- Subscribe to claim/release before IslandService enables claim touch handlers.
 require(Services.CombatContextService).Start()
 require(Services.CombatDebugService).Start()

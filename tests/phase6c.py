@@ -8,8 +8,8 @@ shop_testing = ('modules.GameConfig.StudioTesting.Enabled=true\n'
 
 scenarios['shop-discovery-and-live-ui']=(shop_testing,ui+r'''
 local gui=playerGui.IdleHeroSimulatorHeroShop;local panel=gui.Panel
-assert(not gui.Enabled and not playerGui.IdleHeroSimulatorProgression.Panel.HeroTabs.Archer.Visible)
-assert(not playerGui.IdleHeroSimulatorProgression.Panel.HeroTabs.Mage.Visible)
+assert(not gui.Enabled and not playerGui.IdleHeroSimulatorProgression.Panel.Visible)
+assert(not playerGui.IdleHeroSimulatorProgression.Panel:FindFirstChild('HeroTabs'))
 assert(not storage.IdleHeroSimulatorRemotes:FindFirstChild('BuyHero') and progression.BuyHero==nil)
 assert(progression.GetNextHero(p1)=='Archer' and p1.HeroShop:GetAttribute('HeroId')=='Archer')
 visitShop(p1);assert(gui.Enabled and panel.Hero.Text=='CLAIM AN ISLAND FIRST' and not panel.Buy.Active)
@@ -32,7 +32,7 @@ assert(panel.Hero.Text=='MAGE')
 p1.HeroShop:SetAttribute('AttackSpeed',0);p1.HeroShop:SetAttribute('AttackSpeed',1/2.4)
 assert(panel.Summary.Text:find('0.42 attacks/s',1,true))
 assert(#heroRemote.Requests[1]==1 and heroRemote.Requests[1][1]==old,'minimal request is only opaque offer token')
-assert(playerGui.IdleHeroSimulatorProgression.Panel.HeroTabs.Archer.Visible and not playerGui.IdleHeroSimulatorProgression.Panel.HeroTabs.Mage.Visible)
+assert(not playerGui.IdleHeroSimulatorProgression.Panel.Visible and not active(a,'Mage'))
 assert(manager.GetContext(p1)==a and active(a,'Archer') and #a.Heroes==2)
 economy.AddGold(p1,1000);advance(.3);panel.Buy.Activated:Fire()
 assert(economy.GetGold(p1)==0 and progression.OwnsHero(p1,'Mage') and not progression.GetNextHero(p1))

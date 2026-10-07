@@ -1,20 +1,17 @@
 # Idle Hero Simulator
 
-Roblox/Rojo prototype through **Phase 6C.1**: a neutral floating Hub, six
-claimable floating islands, and independent server-authoritative combat for
+Roblox/Rojo prototype through **Phase 6D**: a neutral floating Hub, six
+claimable floating islands and independent server-authoritative combat for
 every island owner. Each owner has their own heroes, enemy, waves, bosses,
 gold and progression. Joining alone starts no combat.
 
-**Phase 6C is implemented:** a Hub Hero Shop NPC reveals/purchases only the next
-unowned hero. The temporary HUD now shows only owned heroes and their existing
-level/milestone controls. **Phase 6D (clickable physical hero upgrades), saving/
-DataStore and offline progress are NOT implemented.** Progress is in memory and
-is lost on leaving. The project owner confirmed Phase 6B and Phase 6C working
-in real Studio tests. The new Phase 6C.1 polish still requires Studio verification.
-
-The follow-up claim responsiveness fix adds 10 Hz server occupancy detection
-alongside the immediate Touched path. It still requires the real Studio walk/race
-test below; Phase 6D remains unimplemented.
+**Phase 6D is implemented:** interact with a physical owned hero to open its
+contextual upgrade menu. Normal gameplay keeps only compact Gold and Total DPS,
+plus reward popups. The separate Hub Hero Shop still discovers Archer -> Mage.
+**Saving/DataStore and Offline Progress are NOT implemented.** Progress is in
+memory and is lost on leaving. The project owner confirmed Phases 6A, 6B, 6C
+and 6C.1 working in real Studio multiplayer tests; new Phase 6D behavior still
+requires the Studio checks below. Reliable 10 Hz claim fallback remains intact.
 
 ## Run with Rojo
 
@@ -30,7 +27,194 @@ the prototype geometry and combat models; no binary model/place file is required
 `default.project.json` maps Shared to ReplicatedStorage, Server to
 ServerScriptService, and Client to StarterPlayerScripts.
 
-## Claim responsiveness fix — before Phase 6D
+## Phase 6D — interact with a physical hero to upgrade
+
+HeroService calls HeroUpgradeService.Attach immediately after registering each
+physical rig in its private context.HeroesById. Exactly one UpgradeHero
+ProximityPrompt is attached to the model's PrimaryPart (the existing invisible
+rig root): ObjectText=hero name, ActionText=Upgrade, E, HoldDuration=0,
+RequiresLineOfSight=false. WorldConfig.HeroUpgradeActivationDistance=10 controls
+prompt and server root-to-hero distance. Roblox supplies mobile/controller input.
+No global Workspace hero-name lookup is used. Knight startup, pre-owned crews,
+newly purchased Archer/Mage and regenerated contexts use the same spawn path.
+
+HeroUpgradeService starts after ProgressionService and before combat/world startup.
+It captures the actual server hero record in each prompt callback. Opening requires
+an active private context belonging to the interacting Player, the exact
+HeroesById entry/model in that context's HeroFolder, valid hero ID, private owned
+progression, enabled instance-bound prompt, and a living character/root within
+10 studs. A foreign or unowned hero opens nothing and exposes no other player's
+progression. Prompts can be visible to visitors; server rejection is authoritative.
+
+### Selection and purchases
+
+One private selection per player stores the exact hero record and a monotonically
+changing token. Player.HeroUpgradeSelection replicates Token, HeroId and ContextId
+for inspection; these attributes are not validation authority. OpenHeroUpgrade
+sends only that player the stable Model Instance, HeroId and token. A new physical
+interaction replaces the selection/token. The client reuses one menu, rebuilding
+only that hero's milestone rows; there are no hero-selection tabs.
+
+The existing purchase remotes now require the selection token:
+
+| Remote | Client arguments |
+| --- | --- |
+| BuyHeroLevels | heroId, mode, selectionToken |
+| BuyHeroLevel (x1 compatibility) | heroId, selectionToken |
+| BuyUpgrade | heroId, upgradeId, selectionToken |
+| CloseHeroUpgrade | selectionToken |
+
+ProgressionService's remote adapter validates exact argument count and delegates
+selection validation to HeroUpgradeService before calling the unchanged
+BuyHeroLevels / BuyHeroLevel / BuyUpgrade functions. The private player selection,
+hero ID/token, current live character/root, active owning context, exact physical
+model, current HeroesById record and private ownership must all still match.
+No client cost, amount, milestone state, target player or replicated ownership is
+trusted. Direct server APIs remain available for existing trusted systems/tests;
+remote purchases without a valid physical selection are rejected. Server prices,
+rounded costs, actual count, level caps, ownership checks, milestone effects and
+shared purchase cooldown are unchanged. Replies carry the selection token so
+late results for an old hero do not overwrite the current menu's feedback.
+
+Close revokes only the matching selection token. Model removal/reparenting,
+HeroService cleanup, context invalidation, island release, departure and avatar
+reset invalidate the selected instance and safely close the menu. Late ancestry
+callbacks or close messages for an old selection cannot close a new one. The
+private context check blocks purchases even before deferred release cleanup.
+Prompt and model listeners disconnect on removal; recreated rigs get fresh prompts.
+
+Distance is checked on opening. A valid menu may stay open while walking away
+or being returned from void; purchases still require the same active owning
+context, physical hero and living avatar. No movement/camera locks or combat
+pause/restart are introduced. Resetting the avatar closes the menu while keeping
+its existing combat/hero instances. Studio RESET HERO updates an open menu
+without closing it because the physical hero itself remains valid.
+
+### Contextual menu and compact permanent HUD
+
+The existing client/main.client.lua now keeps one normally hidden centered Panel
+inside IdleHeroSimulatorProgression. It shows the selected hero's name, level,
+damage, attack speed in attacks/sec, DPS, personal Gold Multiplier, single next
+level cost, selected bulk quote, mode/Level Up buttons, own milestone rows and
+CLOSE. Only server-published HeroProgression snapshots/quotes supply calculations;
+HeroConfig supplies names/milestone metadata, not duplicate client damage formulas.
+Gold, level, upgrade, quote, cross/global effect and DPS attributes refresh the
+open menu without reopen. Milestones stay LOCKED / AVAILABLE / PURCHASED.
+
+The former permanent left panel, hero tabs and combat explanatory block are gone.
+The ScreenGui stays enabled for its separate compact Gold (upper left), Total DPS
+(upper right), GoldPopup and existing Studio-only CombatDebugPanel. Closing the
+hero menu hides only Panel, so actual reward popups/gold/DPS continue independently.
+The separate HeroShopPanel and NPC prompt preserve island-gated sequential
+Archer -> Mage discovery. Buying a hero immediately adds its physical upgrade
+prompt to the existing island context without resetting enemy/wave/deadline.
+
+All six modes remain x1, x10, x25, x100, MAX, NEXT (the mode button cycles them).
+MAX buys the maximum affordable consecutive levels; NEXT targets the next
+configured milestone and falls back to x1 after the final milestone, subject to
+the existing level cap. Neither automatically buys a milestone. Upgrades remain
+personal and use existing local, cross-hero and global effects. The open menu
+updates for Studio RESET HERO; pause/toggles/enemy HP reset/debug snapshots are
+still Studio-only and separate from production UI.
+
+### Exact Phase 6D single-player Studio test
+
+Pull main, run Rojo 7.7.1, sync the **entire** project and restart Play after every
+config change. For affordable prototype tests set StudioTesting.Enabled=true,
+StartingGold=1000000000000, StartingHeroLevels={Knight=1,Archer=1,Mage=1},
+StartingOwnedHeroes={Archer=false,Mage=false}. The large Studio debug panel is
+expected in this mode. Test production HUD separately with Enabled=false.
+
+1. Join the game in Hub without combat.
+2. Claim an island by normal walking; confirm owner avatar/name and Wave 1 crew.
+3. Confirm compact permanent Gold and Total DPS, with no permanent hero controls.
+4. Confirm there are no hero tabs/old left progression panel. Studio debug UI is
+   independent and only visible while StudioTesting is enabled.
+5. Walk within 10 studs of your physical Knight.
+6. Press E on its Upgrade prompt (or the platform's prompt input).
+7. One Knight menu opens, centered, with CLOSE and only Knight milestones.
+8. Compare Level/Damage/Attack Speed/DPS to your HeroProgression.Knight attributes;
+   default level 1: Damage 20, speed 0.77 attacks/sec, rounded displayed DPS 15.
+9. In x1 mode buy one level; compare gold deduction with the server quote.
+10. Confirm level, damage, DPS and costs update immediately without reopening.
+11. Cycle to x10 and buy; compare the server's actual count/total cost.
+12. Cycle to MAX and buy; it uses the existing level cap/affordability. If MAX
+    reaches the cap, use Studio RESET HERO before the next NEXT test.
+13. Cycle to NEXT and buy; it targets the next milestone, buying only levels.
+14. At a required level buy a Knight milestone explicitly.
+15. Confirm its button becomes PURCHASED, its effect updates and duplicates fail.
+16. Close the menu: permanent Gold/Total DPS and reward popups remain available.
+17. Confirm attacks, wave transitions, boss timer and movement never stopped.
+18. Return to the Hero Shop and buy the next Archer offer normally.
+19. Confirm one Archer spawns on your island with exactly one Upgrade prompt.
+20. Interact with your Archer.
+21. Its menu shows Archer stats/milestones, not locked/unowned heroes.
+22. Open Knight then Archer while the panel is open: one menu replaces contents.
+23. Buy an Archer level with x1.
+24. Confirm only Archer's level changes. Repeat purchasing/interacting with Mage;
+    test Mage's cross/global upgrades live in another hero's open menu. RESET
+    HERO on the selected hero must show Level 1/cleared milestones/current stats
+    while keeping the menu open. Reset the avatar/release the island/despawn the
+    model: the menu must close safely. Fall into void and verify proper respawn.
+
+Restore StudioTesting.Enabled=false and temporary values, sync/restart. Gold
+starts at 0; only Gold/Total DPS/reward popups remain permanent, and Studio debug
+controls/RESET HERO are absent. Claim/open Knight and verify normal gameplay again.
+
+### Exact Phase 6D two-player Studio test
+
+Use the same testing configuration, sync/restart and Test -> Server & Clients:
+
+1. Start two clients A/B in Hub without combat.
+2. Both claim different islands with independent ownership/portraits.
+3. Confirm each has one physical Knight with one Upgrade prompt.
+4. A interacts with A's Knight.
+5. A sees A's hero progression only; B's menu stays hidden.
+6. B interacts with B's Knight.
+7. B sees B's progression; both menus can be open independently.
+8. Close A's menu and walk A to B's island.
+9. A attempts B's Knight Upgrade prompt.
+10. No menu opens for A and B's menu/selection remains unchanged.
+11. Return A to A's Knight, open and level it.
+12. B's Knight level/milestones stay unchanged (natural combat gold may change).
+13. B levels B's Knight separately.
+14. A's level/milestones stay unchanged; compare different levels in both menus.
+15. A alone buys Archer from the Hub shop.
+16. Only A's Archer appears; A can upgrade it and B's interaction is rejected.
+
+Also test own milestones, active boss countdown, selected RESET HERO, avatar
+reset, void return, owner leaving, freed island reuse and simultaneous claim
+safety. A selected hero's cleanup closes only its owner's menu. With six clients,
+claim all islands: 18 prompts with all three heroes owned, six private selections
+and independent purchases; no global name lookup or shared selection/state.
+
+### Validation and limitations
+
+All **74** actual-module scenarios pass: all 61 prior claim/combat/progression/shop/
+UI regressions plus 13 Phase 6D cases for own/foreign/unowned interaction, distance/
+payload/token spoofing, all bulk modes, own milestones/live global effects/reset,
+hero switch/close/stale results, despawn/context recreation, avatar/void, purchased/
+pre-owned rigs, combat/reward continuity, six owners, two client-script instances,
+and deferred old callbacks/release cleanup. Earlier remote tests now supply a real
+physical selection/token; their malformed requests, private state, cost/rate and
+ownership assertions remain. Those fixtures freeze their attack heartbeat while
+retaining the physical hero instead of destroying it. Old permanent-tab assertions
+now check hidden/no-tabs UI and physical interaction instead.
+
+Full Luau compilation, Rojo sourcemap and temporary Rojo build/XML validation of
+all 28 scripts/modules pass; no place/model artifact is committed. The tests use
+real modules with deterministic API mocks, not Studio rendering/replication/physics.
+Real E/mobile prompt selection, UI overlap/readability, actual thumbnail loading,
+network latency and destruction event timing still require the manual tests above.
+UI is prototype-quality; costs/stats remain rounded by the existing formatter.
+Saving/DataStore, Offline Progress, new heroes and map/art redesign are absent.
+
+Created: src/server/Services/HeroUpgradeService.lua, tests/phase6d.py.
+Modified: src/server/Services/{HeroService,ProgressionService}.lua,
+src/server/main.server.lua, src/client/main.client.lua, src/shared/WorldConfig.lua,
+tests/{phase6b,phase6c}.py, tests/roblox_mock.luau and README.md.
+
+## Claim responsiveness fix — retained in Phase 6D
 
 The previous implementation relied exclusively on ClaimZone.Touched. Its callback
 accepted any part of the current character (not just HumanoidRootPart), but
@@ -120,12 +304,12 @@ needed. Use Test -> Server & Clients with two clients and watch server Output.
 
 Also reset an owner and fall into void; preserve their current context and
 return to their owned island. In a fresh session, fall before claiming and
-return to the Hub. Confirm an unassigned shopper is still blocked. No Phase 6D,
-map redesign, ownership-rule change, saving, offline progress or new heroes.
+return to the Hub. Confirm an unassigned shopper is still blocked. This claim
+fix changed no map/ownership rules and added no saving/offline progress/new heroes.
 
 ## Phase 6C.1 — shop, owner portrait and world UI polish
 
-All five requested changes are implemented without starting Phase 6D:
+The five Phase 6C.1 changes are retained in Phase 6D:
 
 - Shop opening works before claim, but its UI shows **CLAIM AN ISLAND FIRST**.
   IslandId changes refresh an already open panel. Purchases require the server's
@@ -276,8 +460,8 @@ Opening the shop remains allowed and explains the claim requirement. The offer u
 all-owned message. Normal Gold HUD also updates from the actual balance.
 
 The old free-choice BuyHero remote/API and BUY HERO branch are removed. Normal
-HUD tabs are visible only for owned heroes; all existing owned-hero leveling,
-bulk modes and milestone upgrades remain for Phase 6C. Studio debug tools and
+Normal HUD shows compact Gold/Total DPS; owned-hero leveling, bulk modes and
+milestone upgrades now open through physical heroes in Phase 6D. Studio debug tools and
 testing values remain Studio-gated, with no separate currency or production cheats.
 
 ### Exact Phase 6C single-player Studio test
@@ -286,8 +470,8 @@ testing values remain Studio-gated, with no separate currency or production chea
    StartingHeroLevels={Knight=1,Archer=1,Mage=1}, and
    StartingOwnedHeroes={Archer=false,Mage=false}. Pull main, run Rojo, sync the
    **entire** project and restart Play. Required modules are cached per session.
-2. Spawn in Hub: no combat. Normal HUD shows owned Knight only; no Archer/Mage
-   purchase buttons/tabs. Confirm the visible HERO SHOP merchant at the configured
+2. Spawn in Hub: no combat. Normal HUD has no permanent hero controls; no Archer/Mage
+   purchase buttons/tabs; permanent HUD is Gold/Total DPS only. Confirm the HERO SHOP merchant at the configured
    diagonal Hub position without blocking spawn or a bridge.
 3. Walk within 12 studs, use the E prompt. The centered shop opens and offers
    **CLAIM AN ISLAND FIRST**, with the purchase button disabled. No Mage preview
@@ -305,7 +489,7 @@ testing values remain Studio-gated, with no separate currency or production chea
    boss deadline or Knight. Exactly one Mage rig; its bolts target A's enemy.
 7. The same open shop shows ALL HEROES UNLOCKED and no BUY button. CLOSE/reopen:
    merchant remains usable with that message. Owned hero levels/milestones and
-   bulk modes still work in the temporary HUD.
+   bulk modes work after interacting with each physical hero on your island.
 8. Reset the avatar, reopen the shop and confirm session ownership is preserved.
    Repeat from a fresh session with StartingGold=99: Archer BUY is disabled and
    reads CLAIM AN ISLAND FIRST before claim, then NOT ENOUGH GOLD after claim.
@@ -355,8 +539,8 @@ Rojo build/XML module validation pass.
 NPC and shop visuals are prototype Parts/UI. Heroes and prices are unchanged;
 there is no Hero 4. Shared HeroConfig metadata is not concealed from exploiters.
 Shop UI can stay open after walking away, but buying requires server distance
-validation. Progression/ownership remain session-only. **Phase 6D, saving,
-offline progress and final NPC/UI/map art are not implemented.**
+validation. Progression/ownership remain session-only. Phase 6D is implemented
+above; **saving, offline progress and final NPC/UI/map art are not implemented.**
 
 ## World and island ownership
 
@@ -544,12 +728,14 @@ to enemy earnings, not starting gold; popups show only the actual capped gain.
 | 150 | Alchemical Fortune | Personal gold earned x1.25 | 300,000,000 |
 | 200 | Legendary Mage | Mage damage x10 | 30,000,000,000 |
 
-The temporary HUD retains **owned-hero** tabs, milestone buttons and
-bulk modes x1/x10/x25/x100/MAX/NEXT. NEXT targets the next configured milestone;
+The contextual menu retains selected-owned-hero milestone buttons and
+bulk modes x1/x10/x25/x100/MAX/NEXT; permanent hero tabs are removed.
+NEXT targets the next configured milestone;
 bulk buys sum the increasing rounded per-level costs and may buy a partial
 count if funds are insufficient. Unlocking a milestone never buys it automatically.
 
-Purchase remotes accept only IDs/modes. The server validates payload length/types,
+Purchase remotes accept only IDs/modes and a valid physical-selection token.
+The server validates the active owner/instance/selection and payload length/types,
 known heroes/upgrades, private ownership, affordability, level requirements,
 level cap, already-purchased state and rate limits. Client display attributes,
 prices, damage and target players are not authoritative inputs.
@@ -605,7 +791,8 @@ from the caller's real progression.
    Island 1: Knight spawns. Return to the merchant and buy Archer for 100, then
    Mage for 1000: exactly one rig of each appears at its configured slot.
    Observe arrows/bolts hit only this island's captured enemy.
-6. Level each hero separately through x1/x10/x25/x100/MAX/NEXT; inspect exact
+6. Interact with each physical hero to open its menu; level separately through
+   x1/x10/x25/x100/MAX/NEXT and inspect exact
    counts/costs, partial affordability and milestone availability. For fast
    upgrades, stop Play and use StartingGold=1000000000000 and all three starting
    levels=150, with Archer/Mage owned. Sync/restart and claim. Buy Archer Quick
@@ -643,7 +830,7 @@ from the caller's real progression.
    A's Archer/Mage OFF during flight: A's projectiles disappear; B's continue.
    A replacing/killing an enemy must never redirect an old projectile to its
    next enemy or to B. Confirm B's gold popups are only from B's kills.
-5. On A only, level Archer to 50 and buy Quick Draw/Rallying Volley; level Mage
+5. On A only, open each hero via its physical prompt, level Archer to 50 and buy Quick Draw/Rallying Volley; level Mage
    to 150 and buy Enchanted Blade/Alchemical Fortune; level Knight to 50 and buy
    Treasure Hunter. A's effective speed/damage/GoldMultiplier/Total DPS change;
    B's levels, purchased upgrades and multiplier remain unchanged. Compare
@@ -675,6 +862,7 @@ migrated to the new shop request; their ownership/security/claim assertions rema
 `tests/phase6c1.py` runs all 47 plus six polish regressions: **53 passed**.
 `tests/claim_responsiveness.py` includes all 53 plus eight claim detection
 regressions: **61 passed**.
+`tests/phase6d.py` includes all 61 plus 13 physical-menu scenarios: **74 passed**.
 Earlier shop cases now expect the requested pre-claim rejection; security,
 post-claim purchases and lifecycle assertions remain exercised.
 Existing progression/security cases are in `tests/progression_regressions.json`.
@@ -686,6 +874,7 @@ LUAU_BIN=/path/to/luau python3 tests/phase6b.py
 LUAU_BIN=/path/to/luau python3 tests/phase6c.py
 LUAU_BIN=/path/to/luau python3 tests/phase6c1.py
 LUAU_BIN=/path/to/luau python3 tests/claim_responsiveness.py
+LUAU_BIN=/path/to/luau python3 tests/phase6d.py
 luau-compile src/shared/*.lua src/server/*.lua src/server/Services/*.lua src/server/Heroes/*.lua src/client/*.lua
 rojo sourcemap default.project.json --output /tmp/idle-hero-simulator-sourcemap.json
 ```
@@ -711,7 +900,7 @@ touch physics, replication latency and local-server clients need the manual
 procedures above. Projectile visuals remain server-replicated placeholders;
 client VFX, streaming behavior and production-scale performance are unverified.
 Ownership/progression is session-only, at most six players can own islands,
-and the first valid claimant wins. Phase 6D remains unstarted.
+and the first valid claimant wins. Phase 6D now adds physical upgrade menus above.
 
 
 ## Phase 6B Studio runtime integration correction
@@ -762,7 +951,7 @@ contain Knight and a Wave 1 enemy, HasCombatArea must be true and TotalDPS about
 Island 2 and gets its separate Wave 1/Knight/enemy. Continue with the full
 single/two-player tests above, including owner-only gold/projectiles and release.
 The cloud regression is not a completed Studio retest; rendering/network/physics
-confirmation for new changes still requires Studio. Phase 6D remains unstarted.
+confirmation for the new Phase 6D changes still requires Studio.
 
 
 To verify the event boundary in the **real Roblox engine**, paste

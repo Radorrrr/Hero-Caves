@@ -22,6 +22,11 @@ local lastPurchaseAt = {}
 local milestoneIndex = {}
 local heroIds = {}
 local started = false
+local interactionValidator
+
+function ProgressionService.SetHeroInteractionValidator(validator)
+	interactionValidator = validator
+end
 
 local function validId(value)
 	return type(value) == "string" and #value <= 64 and value:match("^[A-Za-z][A-Za-z0-9_]*$") ~= nil
@@ -346,10 +351,16 @@ function ProgressionService.Start()
 		event.Name = name
 		event.Parent = remotes
 		event.OnServerEvent:Connect(function(player, ...)
-			if select("#", ...) ~= argumentCount then return end
-			local success, reason, count, cost = purchase(player, ...)
+			if select("#", ...) ~= argumentCount + 1 then return end
+			local args = table.pack(...)
+			local token = args[args.n]
+			if not interactionValidator or not interactionValidator(player, args[1], token) then
+				event:FireClient(player, false, "InvalidSelection", nil, nil, token)
+				return
+			end
+			local success, reason, count, cost = purchase(player, table.unpack(args, 1, argumentCount))
 			if reason ~= "TooFast" then
-				event:FireClient(player, success, reason, count, cost)
+				event:FireClient(player, success, reason, count, cost, token)
 			end
 		end)
 	end

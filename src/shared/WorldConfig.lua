@@ -9,6 +9,7 @@ return {
 	-- Diagonal Hub corner, away from spawn and all bridge approaches; relative to platform top.
 	HeroShopOffset = Vector3.new(22, 0, 18),
 	HeroShopActivationDistance = 12,
+	HeroUpgradeActivationDistance = 10,
 	IslandCount = 6,
 	IslandRadius = 150,
 	IslandSize = Vector3.new(64, 4, 64),
