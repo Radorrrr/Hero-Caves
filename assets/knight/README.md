@@ -1,5 +1,9 @@
 # Knight: rigid rig and first animation pass
 
+**For the corrected Roblox compatibility export, see [Roblox Test v2](ROBLOX_TEST_V2.md).**
+Select `Knight_Roblox_Test_v2.fbx` in Studio. The original files described below
+are retained for comparison; use the v2 pipeline for new Roblox exports.
+
 Prepared from the uploaded Meshy_AI_Character_output.glb in Blender 4.3.2.
 The original upload is unchanged. This is an editable first animation pass,
 not an asset already connected to the Roblox game's combat controller.

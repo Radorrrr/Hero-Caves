@@ -1,0 +1,140 @@
+{
+  "status": "passed_local_validation",
+  "primary_roblox_test_file": "Knight_Roblox_Test_v2.fbx",
+  "triangles": 4072,
+  "bones": {
+    "Root": null,
+    "Pelvis": "Root",
+    "Torso": "Pelvis",
+    "Head": "Torso",
+    "UpperArm.L": "Torso",
+    "Forearm.L": "UpperArm.L",
+    "Hand.L": "Forearm.L",
+    "UpperArm.R": "Torso",
+    "Forearm.R": "UpperArm.R",
+    "Hand.R": "Forearm.R",
+    "Sword": "Hand.R",
+    "Thigh.L": "Pelvis",
+    "Shin.L": "Thigh.L",
+    "Foot.L": "Shin.L",
+    "Thigh.R": "Pelvis",
+    "Shin.R": "Thigh.R",
+    "Foot.R": "Shin.R"
+  },
+  "geometry_uv_rigid_weight_signature_unchanged": true,
+  "source_textures_sha256": {
+    "Image_0": "e7a89b202f81878e9acc248f1ba4af67f7b4073eb67023b3ada730496e5f7836",
+    "Image_1": "0428ce0e2d2225853ca93e1efbbb514384d943e053882179ecb15730e645160c",
+    "Image_2": "c1bb9f15b7f4800c4f6bf12898048c8286465b1173c075fe28c3f1f4ed3aaa46"
+  },
+  "fbx": {
+    "format": "FBX",
+    "binary_version": 7400,
+    "mesh_count": 1,
+    "skin_count": 1,
+    "bone_count": 17,
+    "scale_animation_channels": 0,
+    "weight_animation_channels": 0,
+    "channel_types": {
+      "Lcl Translation": 54,
+      "Lcl Rotation": 54
+    },
+    "bind_matrix_identity_error": 1.7207272562380638e-07,
+    "rigid_weights": true,
+    "embedded_base_color_and_normal_bytes_unchanged": true,
+    "animation_stacks": [
+      "Knight_Rig|Knight_Idle",
+      "Knight_Rig|Knight_SwordAttack",
+      "Knight_Rig|Knight_Walk"
+    ],
+    "assembled_position_error": 4.6932744228910274e-07,
+    "max_edge_length_change": 6.239024139542693e-07,
+    "max_sword_hand_relative_error": 3.842869773507118e-07,
+    "animations": [
+      {
+        "name": "Knight_Idle",
+        "frames_checked": 61,
+        "imported_frame_range": [
+          0.0,
+          60.0
+        ],
+        "max_source_pose_error": 7.251217997429632e-07
+      },
+      {
+        "name": "Knight_Walk",
+        "frames_checked": 31,
+        "imported_frame_range": [
+          0.0,
+          30.0
+        ],
+        "max_source_pose_error": 8.627264833976391e-07
+      },
+      {
+        "name": "Knight_SwordAttack",
+        "frames_checked": 31,
+        "imported_frame_range": [
+          0.0,
+          30.0
+        ],
+        "max_source_pose_error": 2.5193981575739363e-06
+      }
+    ]
+  },
+  "glb": {
+    "format": "GLB",
+    "mesh_count": 1,
+    "skin_count": 1,
+    "bone_count": 17,
+    "scale_animation_channels": 0,
+    "weight_animation_channels": 0,
+    "channel_types": {
+      "translation": 51,
+      "rotation": 51
+    },
+    "inverse_bind_identity_error": 4.0675431067782597e-07,
+    "assembled_position_error": 4.389603688399218e-07,
+    "rigid_weights": true,
+    "max_edge_length_change": 7.284301922760861e-08,
+    "max_sword_hand_relative_error": 1.8437431403839355e-07,
+    "animations": [
+      {
+        "name": "Knight_Idle",
+        "seconds": 2.0,
+        "frames_checked": 61,
+        "max_source_pose_error": 7.415960452065288e-07
+      },
+      {
+        "name": "Knight_Walk",
+        "seconds": 1.0,
+        "frames_checked": 31,
+        "max_source_pose_error": 7.465233140890715e-07
+      },
+      {
+        "name": "Knight_SwordAttack",
+        "seconds": 1.0,
+        "frames_checked": 31,
+        "max_source_pose_error": 1.5926514545243063e-06
+      }
+    ]
+  },
+  "negative_validation_controls": [
+    {
+      "case": "scale_channel",
+      "rejected": true
+    },
+    {
+      "case": "wrong_head_inverse_bind",
+      "rejected": true
+    },
+    {
+      "case": "sword_weighted_to_head",
+      "rejected": true
+    }
+  ],
+  "roblox_studio_test": "Required; no Roblox Studio runtime is available in this environment.",
+  "limitations": [
+    "Custom skeleton, not R15. No gameplay integration.",
+    "FBX does not carry the original glTF packed metallic/roughness shader graph; use unchanged supplied maps for SurfaceAppearance setup.",
+    "Studio 3D Importer rest pose and all three clips still need manual verification."
+  ]
+}

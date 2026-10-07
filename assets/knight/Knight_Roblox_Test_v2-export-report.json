@@ -1,0 +1,45 @@
+{
+  "original_source_sha256": "d4ee54122fcdd358693d9377a6b011ebb0a7f50f6cc1e219e27b4a8c8a26f067",
+  "source_mesh_count": 16,
+  "export_mesh_count": 1,
+  "bone_count": 17,
+  "triangles": 4072,
+  "geometry_uv_rigid_weight_signature": "510bd275b6936624120f5b2006aac1d424fffe353c77d64a01cb2c6aa2d5a2c7",
+  "textures_sha256": {
+    "Image_0": "e7a89b202f81878e9acc248f1ba4af67f7b4073eb67023b3ada730496e5f7836",
+    "Image_1": "0428ce0e2d2225853ca93e1efbbb514384d943e053882179ecb15730e645160c",
+    "Image_2": "c1bb9f15b7f4800c4f6bf12898048c8286465b1173c075fe28c3f1f4ed3aaa46"
+  },
+  "object_transforms_identity": true,
+  "animation_actions": [
+    {
+      "name": "Knight_Idle",
+      "frames": [
+        1.0,
+        61.0
+      ]
+    },
+    {
+      "name": "Knight_Walk",
+      "frames": [
+        1.0,
+        31.0
+      ]
+    },
+    {
+      "name": "Knight_SwordAttack",
+      "frames": [
+        1.0,
+        31.0
+      ]
+    }
+  ],
+  "fps": 30,
+  "fbx_cleanup": {
+    "removed_constant_scale_curve_nodes": 54,
+    "removed_curve_objects": 216
+  },
+  "glb_cleanup": {
+    "removed_constant_scale_channels": 51
+  }
+}
