@@ -21,6 +21,7 @@ return {
 	BridgeSurfaceDrop = 0.2,
 	ClaimZoneSize = Vector3.new(20, 8, 12),
 	ClaimZoneOffset = Vector3.new(0, 4, -22),
+	ClaimCheckInterval = 0.1, -- Root occupancy fallback; Touched remains the immediate fast path.
 	PlayerSpawnOffset = Vector3.new(0, 1, -8),
 	CaveOffset = Vector3.new(0, 0, 16),
 	EnemyOffset = Vector3.new(0, 4, 5),

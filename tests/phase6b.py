@@ -440,6 +440,8 @@ local function flush()
  while #queue>0 do count+=1;assert(count<1000);table.remove(queue,1)() end
 end
 islandService.ReleaseIsland(p1)
+-- Leave the detection area so the new occupancy fallback cannot intentionally re-claim.
+p1.Character:PivotTo(workspace.IdleHeroSimulatorWorld.Hub.PlayerSpawn.CFrame)
 assert(not registry.IsActive(a) and not manager.GetContext(p1))
 assert(not originalDamage(oldHero,oldEnemy))
 advance(.1);assert(#contextHits(a)==0,'released context cannot attack before deferred cleanup')

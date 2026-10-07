@@ -242,15 +242,20 @@ function IslandService.GetSpawnLocation(player)
 	return island and island.Markers.PlayerSpawn or hubSpawn
 end
 
+local function rootInsideZone(root, island)
+	local zone = island.Markers.ClaimZone
+	local point = zone.CFrame:PointToObjectSpace(root.Position)
+	local half = zone.Size / 2
+	return math.abs(point.X) <= half.X and math.abs(point.Y) <= half.Y
+		and math.abs(point.Z) <= half.Z
+end
+
 local function insideZone(player, island)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not root or not humanoid or humanoid.Health <= 0 then return false end
-	local point = island.Markers.ClaimZone.CFrame:PointToObjectSpace(root.Position)
-	local half = island.Markers.ClaimZone.Size / 2
-	return math.abs(point.X) <= half.X and math.abs(point.Y) <= half.Y
-		and math.abs(point.Z) <= half.Z
+	return rootInsideZone(root, island)
 end
 
 -- Server-only entry point; no ownership-request remote exists.
@@ -288,6 +293,15 @@ function IslandService.TryClaim(player, islandId)
 	claimedEvent:Fire(player, island.Model)
 	showFeedback(player, "Island " .. island.Id .. " claimed. This is your cave.")
 	return true, "Claimed"
+end
+
+local function detectClaim(player, islandId, source)
+	-- Both detection paths use the same non-yielding ownership validation/assignment.
+	local success = IslandService.TryClaim(player, islandId)
+	if success and RunService:IsStudio() then
+		print(string.format("[IslandService] Claim successful via %s: %s -> Island%d", source, player.Name, islandId))
+	end
+	return success
 end
 
 function IslandService.ReleaseIsland(player)
@@ -376,6 +390,7 @@ function IslandService.Start()
 	assert(Config.IslandRadius > Config.HubSize.X / 2 + Config.IslandSize.Z / 2, "Islands must be outside Hub")
 	assert(not workspace:FindFirstChild(Config.FolderName), "World folder already exists")
 	assert(Config.VoidDepth > 0 and Config.VoidCheckInterval > 0, "Invalid void recovery settings")
+	assert(Config.ClaimCheckInterval > 0 and Config.ClaimCheckInterval <= 0.25, "Invalid claim check interval")
 	local removedFloors = IslandService.RemoveGlobalFloors()
 	local hiddenSpawns = hideLegacyHubSpawns()
 	generation += 1
@@ -440,7 +455,7 @@ function IslandService.Start()
 		table.insert(connections, zone.Touched:Connect(function(hit)
 			local character = hit:FindFirstAncestorOfClass("Model")
 			local player = character and Players:GetPlayerFromCharacter(character)
-			if player and player.Character == character then IslandService.TryClaim(player, id) end
+			if player and player.Character == character then detectClaim(player, id, "Touched") end
 		end))
 		-- Bridges connect the hub to the inward edge of each island for manual walking.
 		local bridgeStart = math.min(Config.HubSize.X, Config.HubSize.Z) / 2 - 6
@@ -454,19 +469,30 @@ function IslandService.Start()
 	table.insert(connections, Players.PlayerAdded:Connect(registerPlayer))
 	table.insert(connections, Players.PlayerRemoving:Connect(release))
 	for _, player in Players:GetPlayers() do registerPlayer(player) end
-	local nextVoidCheck = 0
+	local nextClaimCheck, nextVoidCheck = 0, 0
 	local voidY = surface.Y - Config.VoidDepth
 	table.insert(connections, RunService.Heartbeat:Connect(function()
 		local now = time()
-		if now < nextVoidCheck then return end
-		nextVoidCheck = now + Config.VoidCheckInterval
+		local checkClaims, checkVoid = now >= nextClaimCheck, now >= nextVoidCheck
+		if not checkClaims and not checkVoid then return end
+		if checkClaims then nextClaimCheck = now + Config.ClaimCheckInterval end
+		if checkVoid then nextVoidCheck = now + Config.VoidCheckInterval end
 		for player in playerConnections do
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart")
 			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-			if player.Parent == Players and root and humanoid and humanoid.Health > 0
-				and root.Position.Y < voidY then
-				returnToSpawn(player, character, root)
+			if player.Parent == Players and root and humanoid and humanoid.Health > 0 then
+				if checkVoid and root.Position.Y < voidY then
+					returnToSpawn(player, character, root)
+				elseif checkClaims and not playerIslands[player] then
+					-- Direct references only: at most six zones per eligible live player, at 10 Hz.
+					for id, island in islands do
+						if not island.Owner and rootInsideZone(root, island) then
+							detectClaim(player, id, "occupancy fallback")
+							break
+						end
+					end
+				end
 			end
 		end
 	end))

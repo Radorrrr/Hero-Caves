@@ -12,6 +12,10 @@ DataStore and offline progress are NOT implemented.** Progress is in memory and
 is lost on leaving. The project owner confirmed Phase 6B and Phase 6C working
 in real Studio tests. The new Phase 6C.1 polish still requires Studio verification.
 
+The follow-up claim responsiveness fix adds 10 Hz server occupancy detection
+alongside the immediate Touched path. It still requires the real Studio walk/race
+test below; Phase 6D remains unimplemented.
+
 ## Run with Rojo
 
 Use Rojo 7.7.1 and the Studio Rojo plugin:
@@ -25,6 +29,99 @@ source/configuration changes: required modules are cached. The server builds
 the prototype geometry and combat models; no binary model/place file is required.
 `default.project.json` maps Shared to ReplicatedStorage, Server to
 ServerScriptService, and Client to StarterPlayerScripts.
+
+## Claim responsiveness fix — before Phase 6D
+
+The previous implementation relied exclusively on ClaimZone.Touched. Its callback
+accepted any part of the current character (not just HumanoidRootPart), but
+TryClaim required the live HumanoidRootPart's center inside the oriented zone.
+An early foot/limb touch could therefore fail while the root was outside, with
+no scheduled retry after the root entered. Missed physics touch events had the
+same effect. This is the likely cause of the reported Studio delay; no actual
+Studio physics trace was captured in this cloud workspace.
+
+Inspection confirmed CanTouch=true, CanCollide=false and CanQuery=false on the
+invisible zone. CanQuery does not affect the new mathematical position test.
+There was no claim polling. ClaimFeedbackCooldown=1 throttles messages only,
+not ownership attempts. The CharacterAdded handler's 10-second WaitForChild
+timeout is solely for spawn positioning; claim validation does not wait. Zone
+touch handlers and combat subscriptions are installed before claims are enabled.
+
+Both Touched and the new occupancy detector call the same server-only TryClaim
+function. Every WorldConfig.ClaimCheckInterval=0.1 seconds (10 Hz), the existing
+world Heartbeat checks registered, present players with live characters and no
+private island record. It tests their root position against direct references
+to the six free zones using CFrame:PointToObjectSpace. No Workspace scans,
+spatial-query dependencies, extra heartbeat connection or per-frame remote
+broadcasts are introduced. Nominal fallback latency is one 0.1-second interval
+plus Heartbeat scheduling; real server load/replication still need Studio checks.
+Successful automatic claims print their detection path in Studio only; polling
+does not print on every check or repeatedly try occupied zones.
+
+ClaimZone geometry is unchanged: 20 x 8 x 12 studs, centered at island-local
+(0,4,-22), spanning X=-10..10, Y=0..8 and Z=-28..-16. It covers the normal
+bridge-side walking entrance and ordinary root height without making the entire
+island a claim area. It remains transparent, noncolliding and touch-enabled;
+no rendered layers/floor surfaces were added.
+
+TryClaim revalidates the player, live character/root, exact zone, private existing
+ownership and free island. Both ownership writes happen without yielding before
+any claim consequences. Only the winner creates the cave/owner display and emits
+Claimed; later touch or occupancy detections cannot create another context or
+hero. The loser can claim another free island normally. Avatar loading stays
+asynchronous, shop eligibility updates through IslandId, and existing respawn,
+void recovery and PlayerRemoving cleanup remain intact. Stop disconnects the
+detector; Start creates fresh references and timing state.
+
+A released island can be claimed by a player already waiting inside it on the
+next check. A manually released owner still inside that zone is also eligible
+again; move that avatar out when testing deliberate release without re-claiming.
+The existing deferred-cleanup regression now does this while retaining all its
+stale-hit/cleanup assertions.
+
+Changed files: src/server/Services/IslandService.lua, src/shared/WorldConfig.lua,
+tests/phase6b.py, tests/claim_responsiveness.py and this README. All **61** scenarios
+pass: the existing 53 plus eight new scenarios for immediate/deduplicated touch,
+early/missed-touch recovery within 0.12 simulated seconds, all six rotated walk
+entrances, zone bounds and invalid/late/stale character state, occupancy races and
+one-island ownership, mixed-path races/release/reuse, live shop eligibility and
+respawn/void preservation, and late players/Stop/Start cleanup. Full Luau
+compilation, Rojo sourcemap and temporary build/XML source validation pass. These
+are real-module tests with deterministic mocks, not Studio physics or wall-clock
+network measurements.
+
+### Exact Studio claim responsiveness test
+
+Pull main, run Rojo 7.7.1, sync the entire project and restart the test session.
+Keep the normal ownership rules and configured ClaimZones; no debug geometry is
+needed. Use Test -> Server & Clients with two clients and watch server Output.
+
+1. Start both players in the Hub without islands or combat.
+2. Walk A across a bridge straight into an empty island's UNCLAIMED entrance.
+3. Do not jump, circle around or leave/re-enter; keep walking normally or stop
+   with the root inside the zone.
+4. Expect ownership within roughly 0-0.25 seconds after root entry. Confirm one
+   owner portrait/name, cave, Combat context, Knight and Wave 1 enemy. Output
+   should show Claim successful via Touched or occupancy fallback. Client
+   rendering/network and thumbnail loading can take additional time.
+5. Repeat on several of the six islands using fresh sessions: a player already
+   owning an island cannot claim another. Inspect ordinary walking on each angle.
+6. Have B claim a different island normally. A's combat and owner display must
+   stay unchanged. Returning to the Hub shop now enables each owner's offer.
+7. Restart so both players are unassigned, then enter the same free zone nearly
+   simultaneously.
+8. Confirm exactly one owner, cave, portrait and Combat context. The losing
+   player remains unassigned and gets no combat/portrait. Remain in the zone to
+   test stationary occupancy; repeated touches must not duplicate the winner.
+9. Close the winning owner's client. Its portrait/combat/cave disappear.
+10. The unassigned remaining player, still inside the freed zone, should claim
+    on the next check without another touch. Otherwise walk in normally and
+    confirm immediate reuse with the new portrait/name and one fresh context.
+
+Also reset an owner and fall into void; preserve their current context and
+return to their owned island. In a fresh session, fall before claiming and
+return to the Hub. Confirm an unassigned shopper is still blocked. No Phase 6D,
+map redesign, ownership-rule change, saving, offline progress or new heroes.
 
 ## Phase 6C.1 — shop, owner portrait and world UI polish
 
@@ -276,8 +373,9 @@ vertical geometry and distant floors. Output prints every removed object;
 use a global Baseplate or another SpawnLocation for this prototype.
 
 Walk across a bridge and into the inward island claim area below the
-**UNCLAIMED** sign. The server checks the live character's root against that
-zone; the first valid claimant wins without yielding. One player can own one
+**UNCLAIMED** sign. Touched immediately checks the live character's root; a
+10 Hz occupancy fallback catches early/missed touches against the same zone.
+The first valid claimant wins without yielding. One player can own one
 island and each island one player. A successful claim changes the sign,
 creates the cave placeholder and sets the player's RespawnLocation.
 
@@ -575,6 +673,8 @@ regressions against `tests/roblox_mock.luau`. The two obsolete purchase tests we
 migrated to the new shop request; their ownership/security/claim assertions remain.
 `tests/phase6c.py` runs those 38 plus nine shop scenarios.
 `tests/phase6c1.py` runs all 47 plus six polish regressions: **53 passed**.
+`tests/claim_responsiveness.py` includes all 53 plus eight claim detection
+regressions: **61 passed**.
 Earlier shop cases now expect the requested pre-claim rejection; security,
 post-claim purchases and lifecycle assertions remain exercised.
 Existing progression/security cases are in `tests/progression_regressions.json`.
@@ -585,6 +685,7 @@ that simulated client's listeners. Run with Python 3 and a Luau CLI:
 LUAU_BIN=/path/to/luau python3 tests/phase6b.py
 LUAU_BIN=/path/to/luau python3 tests/phase6c.py
 LUAU_BIN=/path/to/luau python3 tests/phase6c1.py
+LUAU_BIN=/path/to/luau python3 tests/claim_responsiveness.py
 luau-compile src/shared/*.lua src/server/*.lua src/server/Services/*.lua src/server/Heroes/*.lua src/client/*.lua
 rojo sourcemap default.project.json --output /tmp/idle-hero-simulator-sourcemap.json
 ```
