@@ -7,7 +7,7 @@ import json, os, subprocess, tempfile
 root=Path(__file__).resolve().parents[1]
 old={'scenarios':json.loads((root/'tests/progression_regressions.json').read_text())}
 mock=(root/'tests/roblox_mock.luau').read_text()
-modules=[('GameConfig','src/shared/GameConfig.lua'),('EnemyConfig','src/shared/EnemyConfig.lua'),('HeroConfig','src/shared/HeroConfig.lua'),('WorldConfig','src/shared/WorldConfig.lua'),('NumberFormatter','src/shared/NumberFormatter.lua'),('ProgressionMath','src/server/ProgressionMath.lua'),('UpgradeEffects','src/server/UpgradeEffects.lua'),('CombatContexts','src/server/Services/CombatContexts.lua'),('CombatDebugState','src/server/Services/CombatDebugState.lua'),('EnemyService','src/server/Services/EnemyService.lua'),('WaveService','src/server/Services/WaveService.lua'),('EconomyService','src/server/Services/EconomyService.lua'),('ProgressionService','src/server/Services/ProgressionService.lua'),('KnightRig','src/server/Heroes/KnightRig.lua'),('RangedRig','src/server/Heroes/RangedRig.lua'),('CombatService','src/server/Services/CombatService.lua'),('HeroService','src/server/Services/HeroService.lua'),('IslandService','src/server/Services/IslandService.lua'),('CombatContextService','src/server/Services/CombatContextService.lua'),('CombatDebugService','src/server/Services/CombatDebugService.lua'),('GoldPopup','src/client/GoldPopup.lua'),('CombatDebugPanel','src/client/CombatDebugPanel.lua')]
+modules=[('GameConfig','src/shared/GameConfig.lua'),('EnemyConfig','src/shared/EnemyConfig.lua'),('HeroConfig','src/shared/HeroConfig.lua'),('WorldConfig','src/shared/WorldConfig.lua'),('NumberFormatter','src/shared/NumberFormatter.lua'),('ProgressionMath','src/server/ProgressionMath.lua'),('UpgradeEffects','src/server/UpgradeEffects.lua'),('CombatContexts','src/server/Services/CombatContexts.lua'),('CombatDebugState','src/server/Services/CombatDebugState.lua'),('EnemyService','src/server/Services/EnemyService.lua'),('WaveService','src/server/Services/WaveService.lua'),('EconomyService','src/server/Services/EconomyService.lua'),('ProgressionService','src/server/Services/ProgressionService.lua'),('KnightRig','src/server/Heroes/KnightRig.lua'),('RangedRig','src/server/Heroes/RangedRig.lua'),('CombatService','src/server/Services/CombatService.lua'),('HeroService','src/server/Services/HeroService.lua'),('IslandService','src/server/Services/IslandService.lua'),('HeroShopService','src/server/Services/HeroShopService.lua'),('CombatContextService','src/server/Services/CombatContextService.lua'),('CombatDebugService','src/server/Services/CombatDebugService.lua'),('HeroShopPanel','src/client/HeroShopPanel.lua'),('GoldPopup','src/client/GoldPopup.lua'),('CombatDebugPanel','src/client/CombatDebugPanel.lua')]
 common=mock
 for name,path in modules:common+=f'modules.{name}=(function()\nlocal script={{Parent=services}}\n'+(root/path).read_text()+'\nend)()\n'
 common+='''
@@ -70,9 +70,19 @@ local script={Parent={Services=services}}
 start=(root/'src/server/main.server.lua').read_text()+'''
 local remote=storage.IdleHeroSimulatorRemotes.BuyHeroLevel
 local upgradeRemote=storage.IdleHeroSimulatorRemotes.BuyUpgrade
-local heroRemote=storage.IdleHeroSimulatorRemotes.BuyHero
+local heroRemote=storage.IdleHeroSimulatorRemotes.PurchaseNextHero
+local shop=modules.HeroShopService
+local function visitShop(player)
+ if not player.Character then character(player) end
+ local prompt=islandService.GetHeroShopPrompt()
+ player.Character:PivotTo(prompt.Parent.CFrame)
+ prompt.Triggered:Fire(player)
+end
+local function buyNext(player)
+ heroRemote.OnServerEvent:Fire(player,player.HeroShop:GetAttribute('OfferToken'))
+end
 '''
-ui='\n;(function()\nlocal script={Parent=services}\n'+(root/'src/client/main.client.lua').read_text()+'\nend)()\n'
+ui='\nmodules.HeroShopPanel.Start()\n;(function()\nlocal script={Parent=services}\n'+(root/'src/client/main.client.lua').read_text()+'\nend)()\n'
 scenarios={}
 # Preserve meaningful unchanged progression/cost/security regression scenarios.
 for name in ['milestones','security','bulk-x1','bulk-x10','bulk-x25','bulk-x100','partial-max','next-1','next-10','next-17','next-25','next-72','next-149','next-partial-config','bulk-security','shop-security']:
@@ -215,11 +225,12 @@ print('PASS: local/global/cross/boss/speed/gold modifiers, DPS totals, exact com
 scenarios['shop-before-after-claim']=('modules.GameConfig.StudioTesting.Enabled=true\nmodules.GameConfig.StudioTesting.StartingGold=2000\n',ui+r'''
 local p2=addPlayer(102,'Second');local b=claim(p2,4)
 local panel=playerGui.IdleHeroSimulatorProgression.Panel
-panel.HeroTabs.Archer.Activated:Fire();panel.LevelUp.Activated:Fire()
+assert(not panel.HeroTabs.Archer.Visible and not panel.HeroTabs.Mage.Visible)
+visitShop(p1);playerGui.IdleHeroSimulatorHeroShop.Panel.Buy.Activated:Fire()
 assert(progression.OwnsHero(p1,'Archer') and not manager.GetContext(p1))
 assert(alive('Model','Archer')==0)
 local a=claim(p1,1);assert(#a.Heroes==2 and active(a,'Archer') and #b.Heroes==1)
-panel.HeroTabs.Mage.Activated:Fire();advance(.3);panel.LevelUp.Activated:Fire();advance(.01)
+visitShop(p1);advance(.3);playerGui.IdleHeroSimulatorHeroShop.Panel.Buy.Activated:Fire();advance(.01)
 assert(progression.OwnsHero(p1,'Mage') and active(a,'Mage') and #a.Heroes==3 and not active(b,'Mage'))
 local before=progression.GetHeroLevel(p1,'Archer')
 panel.HeroTabs.Archer.Activated:Fire();advance(.3);panel.LevelUp.Activated:Fire()
@@ -522,11 +533,15 @@ assert(not manager.StartCombat(p1,nil) and #warnings==count,'diagnostics must be
 print('PASS: startup marker validation/error diagnostics, rollback clears active state, existing ownership reconciliation and idempotent listener initialization; production diagnostics silent')
 """)
 
-test_directory=tempfile.mkdtemp(prefix="idle-hero-simulator-phase6b-")
-failed=[]
-for name,(before,test) in scenarios.items():
- path=Path(test_directory)/('idle-hero-simulator-phase6b-'+name+'.luau');path.write_text(common+before+'\n'+start+test)
- proc=subprocess.run([os.environ.get('LUAU_BIN','luau'),str(path)],capture_output=True,text=True)
- print(name,proc.returncode,proc.stdout.strip(),proc.stderr.strip())
- if proc.returncode:failed.append(name)
-print('SCENARIOS',len(scenarios),'FAILED',failed);assert not failed,failed
+def run_scenarios(selected):
+ test_directory=tempfile.mkdtemp(prefix="idle-hero-simulator-phase6b-")
+ failed=[]
+ for name,(before,test) in selected.items():
+  path=Path(test_directory)/('idle-hero-simulator-phase6b-'+name+'.luau');path.write_text(common+before+'\n'+start+test)
+  proc=subprocess.run([os.environ.get('LUAU_BIN','luau'),str(path)],capture_output=True,text=True)
+  print(name,proc.returncode,proc.stdout.strip(),proc.stderr.strip())
+  if proc.returncode:failed.append(name)
+ print('SCENARIOS',len(selected),'FAILED',failed);assert not failed,failed
+
+if __name__ == "__main__":
+ run_scenarios(scenarios)

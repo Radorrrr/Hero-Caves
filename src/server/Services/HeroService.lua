@@ -159,6 +159,10 @@ local function synchronizeOwnedHeroes(context, now)
 	end
 end
 
+function HeroService.RefreshOwnedHeroes(context)
+	if Contexts.IsActive(context) then synchronizeOwnedHeroes(context, time()) end
+end
+
 function HeroService.Start(context)
 	if not Contexts.IsActive(context) or context.HeroConnection then return end
 	table.insert(context.HeroConnections, ProgressionService.HeroReset:Connect(function(player, heroId)

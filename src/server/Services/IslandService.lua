@@ -16,6 +16,13 @@ local lastFeedback = {}
 local world, hubSpawn, feedback
 local started = false
 local generation = 0
+local shopPrompt
+local shopChanged = Instance.new("BindableEvent")
+IslandService.HeroShopChanged = shopChanged.Event
+
+function IslandService.GetHeroShopPrompt()
+	return shopPrompt
+end
 
 local function part(class, name, size, frame, parent, color)
 	local object = Instance.new(class)
@@ -238,6 +245,38 @@ local function registerPlayer(player)
 	if player.Character then task.spawn(positionCharacter, player.Character) end
 end
 
+local function createHeroShop(hub, surface)
+	local model = Instance.new("Model")
+	model.Name = "HeroShop"
+	local origin = CFrame.new(surface + Config.HeroShopOffset)
+	local function body(name, size, offset, color)
+		local obj = part("Part", name, size, origin * CFrame.new(offset), model, color)
+		obj.CanCollide = false
+		return obj
+	end
+	body("Torso", Vector3.new(2.5, 3, 1.5), Vector3.new(0, 3.5, 0), Color3.fromRGB(55, 100, 135))
+	local head = body("Head", Vector3.new(1.8, 1.8, 1.8), Vector3.new(0, 5.9, 0), Color3.fromRGB(225, 180, 135))
+	body("Hat", Vector3.new(2.4, 0.5, 2.4), Vector3.new(0, 7.05, 0), Color3.fromRGB(200, 160, 65))
+	for _, side in {-1, 1} do
+		body(side == -1 and "LeftLeg" or "RightLeg", Vector3.new(1, 2, 1.3), Vector3.new(side * 0.65, 1, 0), Color3.fromRGB(55, 55, 65))
+		body(side == -1 and "LeftArm" or "RightArm", Vector3.new(0.8, 2.8, 1), Vector3.new(side * 1.7, 3.6, 0), Color3.fromRGB(225, 180, 135))
+	end
+	model.PrimaryPart = head
+	sign(head, "HERO SHOP")
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "OpenHeroShop"
+	prompt.ActionText = "Hero Shop"
+	prompt.ObjectText = "Hero Merchant"
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = Config.HeroShopActivationDistance
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = true
+	prompt.Parent = head
+	model.Parent = hub
+	return prompt
+end
+
 function IslandService.Start()
 	if started then return end
 	assert(Config.BridgeSurfaceDrop > 0, "Bridge top must be below platform surface")
@@ -259,6 +298,8 @@ function IslandService.Start()
 	local surface = Config.HubPosition + Vector3.new(0, Config.HubSize.Y / 2, 0)
 	hubSpawn = spawnPoint("PlayerSpawn", CFrame.new(surface + Config.HubSpawnOffset), hub)
 	sign(hubSpawn, "IDLE HERO SIMULATOR · HUB")
+	shopPrompt = createHeroShop(hub, surface)
+	shopChanged:Fire(shopPrompt) -- Stable Instance identity across BindableEvent.
 	local folder = Instance.new("Folder")
 	folder.Name = "Islands"
 	folder.Parent = world
@@ -329,6 +370,8 @@ end
 function IslandService.Stop()
 	if not started then return end
 	started = false
+	shopPrompt = nil
+	shopChanged:Fire(nil)
 	generation += 1
 	for _, connection in connections do connection:Disconnect() end
 	table.clear(connections)

@@ -146,8 +146,18 @@ function Instance.new(class)
   end
  elseif class=='RemoteEvent' then
   o.OnServerEvent=signal(); o.OnClientEvent=signal(); o.Responses={}; o.Requests={}
-  function o:FireClient(player,...) table.insert(self.Responses,{player,...}); if player.IsLocal then self.OnClientEvent:Fire(...) end end
+  local connectClient=o.OnClientEvent.Connect
+  function o.OnClientEvent:Connect(fn)
+   local connection=connectClient(self,fn);connection.Player=localPlayer;return connection
+  end
+  function o:FireClient(player,...)
+   table.insert(self.Responses,{player,...})
+   for _,connection in self.OnClientEvent.Listeners do
+    if connection.connected and connection.Player==player then connection.fn(...) end
+   end
+  end
   function o:FireServer(...) table.insert(self.Requests,{...}); self.OnServerEvent:Fire(localPlayer,...) end
+ elseif class=='ProximityPrompt' then o.Triggered=signal()
  elseif class=='TextButton' then o.Activated=signal() end
 
  o.AttributeChanged=signal()
@@ -193,6 +203,7 @@ localPlayer=p1; players.LocalPlayer=p1; p1.IsLocal=true
 local playerGui=Instance.new('PlayerGui'); playerGui.Name='PlayerGui'; playerGui.Parent=p1
 local Vector2={new=function(...) return {...} end}
 local UDim={new=function(...) return {...} end}
+Enum.KeyCode={E='E'}
 Enum.Material.Wood='Wood'; Enum.Material.Neon='Neon'; Enum.PartType.Block='Block'
 Enum.Font.Gotham='Gotham'; Enum.TextXAlignment={Left='Left',Right='Right'}
 Enum.AutomaticSize={Y='Y'}; Enum.ScrollingDirection={Y='Y'}; Enum.SortOrder={LayoutOrder='LayoutOrder'}
@@ -237,4 +248,4 @@ function players:GetPlayerFromCharacter(character)
  for _,p in self.List do if p.Character==character then return p end end
 end
 shared.WorldConfig='WorldConfig'
-for _,name in {'CombatContexts','CombatContextService','IslandService'} do services[name]=name end
+for _,name in {'CombatContexts','CombatContextService','IslandService','HeroShopService','HeroShopPanel'} do services[name]=name end

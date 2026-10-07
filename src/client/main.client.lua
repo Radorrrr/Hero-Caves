@@ -17,7 +17,6 @@ local remotes = ReplicatedStorage:WaitForChild("IdleHeroSimulatorRemotes")
 local buyLevel = remotes:WaitForChild("BuyHeroLevels")
 local purchaseModes = {"x1", "x10", "x25", "x100", "MAX", "NEXT"}
 local modeIndex = 1
-local buyHero = remotes:WaitForChild("BuyHero")
 local buyUpgrade = remotes:WaitForChild("BuyUpgrade")
 
 if playerGui:FindFirstChild("IdleHeroSimulatorProgression") then return end
@@ -172,7 +171,6 @@ local function render()
 	local level = data:GetAttribute("Level")
 	local damage = data:GetAttribute("Damage")
 	local cost = data:GetAttribute("NextLevelCost")
-	local unlockCost = data:GetAttribute("UnlockCost")
 	local maxLevel = data:GetAttribute("AtMaxLevel")
 	goldLabel.Text = "GOLD: " .. NumberFormatter.Format(gold)
 	local multiplier = string.format("%.2f", player:GetAttribute("GoldMultiplier") or 1):gsub("0+$", ""):gsub("%.$", "")
@@ -187,28 +185,34 @@ local function render()
 	local bulkCost = quote and quote:GetAttribute("Cost") or 0
 	local target = quote and quote:GetAttribute("Target") or 0
 	modeButton.Text = "BUY MODE: " .. mode
-	local affordable = gold ~= nil and (owned and count > 0 and not maxLevel
-		or not owned and unlockCost ~= nil and gold >= unlockCost)
-	title.Text = string.upper(definition.Name) .. " · " .. (owned and "OWNED" or (affordable and "AFFORDABLE" or "NOT AFFORDABLE"))
-	levelLabel.Text = owned and ("Level " .. NumberFormatter.Format(level)) or "Not owned — buy this hero first"
-	damageLabel.Text = owned and ("Damage: " .. NumberFormatter.Format(damage))
-		or ("Unlock: " .. NumberFormatter.Format(unlockCost) .. " Gold")
+	local affordable = gold ~= nil and owned and count > 0 and not maxLevel
+	title.Text = string.upper(definition.Name) .. " · OWNED"
+	levelLabel.Text = "Level " .. NumberFormatter.Format(level)
+	damageLabel.Text = "Damage: " .. NumberFormatter.Format(damage)
 	if owned and not maxLevel then
 		nextCostLabel.Text = (mode == "NEXT" and (target > 0 and ("Next Milestone: Level " .. tostring(target)) or "NEXT: x1 after final milestone")
 			or ("Buy " .. mode)) .. " · +" .. tostring(count) .. " Levels · " .. NumberFormatter.Format(bulkCost) .. " Gold"
 	end
-	levelButton.Text = not owned and ("BUY HERO — " .. NumberFormatter.Format(unlockCost) .. " GOLD")
-		or (maxLevel and "Maximum level" or ("Level Up +" .. tostring(count) .. "\n" .. NumberFormatter.Format(bulkCost) .. " Gold"))
+	levelButton.Text = maxLevel and "Maximum level" or ("Level Up +" .. tostring(count) .. "\n" .. NumberFormatter.Format(bulkCost) .. " Gold")
 	styleButton(levelButton, affordable)
 	ownerLabel.Text = player:GetAttribute("HasCombatArea")
 		and "Your heroes fight on your claimed island. Waves and rewards are personal."
 		or "Claim an island to start combat. Your hero purchases and upgrades are ready."
-	for id, tab in tabButtons do
-		local other = heroSnapshots[id].Data
-		local hasHero = other:GetAttribute("Owned") == true
-		local price = other:GetAttribute("UnlockCost")
-		local canBuy = gold ~= nil and price ~= nil and gold >= price
-		tab.Text = HeroConfig[id].Name .. "\n" .. (hasHero and "OWNED" or (canBuy and "AFFORDABLE" or "NOT AFFORDABLE"))
+	local ownedCount = 0
+	for _, id in HeroConfig.HeroOrder do
+		if heroSnapshots[id].Data:GetAttribute("Owned") then ownedCount += 1 end
+	end
+	local visibleIndex = 0
+	for _, id in HeroConfig.HeroOrder do
+		local tab = tabButtons[id]
+		local hasHero = heroSnapshots[id].Data:GetAttribute("Owned") == true
+		tab.Visible, tab.Active = hasHero, hasHero
+		tab.Text = hasHero and (HeroConfig[id].Name .. "\nOWNED") or ""
+		if hasHero then
+			tab.Position = UDim2.new(visibleIndex / math.max(ownedCount, 1), 3, 0, 0)
+			tab.Size = UDim2.new(1 / math.max(ownedCount, 1), -6, 1, 0)
+			visibleIndex += 1
+		end
 		tab.BackgroundColor3 = id == heroId and Color3.fromRGB(55, 95, 145) or Color3.fromRGB(50, 55, 65)
 	end
 	for upgradeId, row in rows do
@@ -230,6 +234,7 @@ for index, id in HeroConfig.HeroOrder do
 	tab.TextWrapped = true
 	tabButtons[id] = tab
 	tab.Activated:Connect(function()
+		if heroSnapshots[id].Data:GetAttribute("Owned") ~= true then return end
 		heroId = id
 		rebuildMilestones()
 		render()
@@ -253,10 +258,7 @@ levelButton.Activated:Connect(function()
 	local data = heroSnapshots[heroId].Data
 	local gold = player:GetAttribute("Gold")
 	if gold == nil then return end
-	if not data:GetAttribute("Owned") then
-		local price = data:GetAttribute("UnlockCost")
-		if price ~= nil and gold >= price then request(buyHero, heroId) end
-	else
+	if data:GetAttribute("Owned") == true then
 		local quote = heroSnapshots[heroId].Quotes[purchaseModes[modeIndex]]
 		if (quote:GetAttribute("Count") or 0) > 0 and not data:GetAttribute("AtMaxLevel") then
 			request(buyLevel, heroId, purchaseModes[modeIndex])
@@ -280,7 +282,6 @@ local function purchaseResult(success, reason, count, cost)
 	render()
 end
 buyLevel.OnClientEvent:Connect(purchaseResult)
-buyHero.OnClientEvent:Connect(purchaseResult)
 buyUpgrade.OnClientEvent:Connect(purchaseResult)
 rebuildMilestones()
 render()

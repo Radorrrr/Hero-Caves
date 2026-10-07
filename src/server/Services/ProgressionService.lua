@@ -14,6 +14,8 @@ local ProgressionService = {}
 local playerHeroes = {}
 local resetEvent = Instance.new("BindableEvent")
 ProgressionService.HeroReset = resetEvent.Event
+local ownedEvent = Instance.new("BindableEvent")
+ProgressionService.HeroOwned = ownedEvent.Event
 local goldConnections = {}
 local purchaseModes = {"x1", "x10", "x25", "x100", "MAX", "NEXT"}
 local lastPurchaseAt = {}
@@ -54,6 +56,12 @@ local function validateConfig()
 	end
 	table.sort(heroIds)
 	assert(ProgressionMath.GetHeroDefinition(HeroConfig.StartingHeroId), "Unknown starting hero")
+	local ordered = {}
+	for _, id in HeroConfig.HeroOrder do
+		assert(ProgressionMath.GetHeroDefinition(id) and not ordered[id], "Invalid/duplicate hero order")
+		ordered[id] = true
+	end
+	for _, id in heroIds do assert(ordered[id], "Hero missing from discovery order") end
 end
 
 local function getState(player, heroId)
@@ -284,25 +292,29 @@ function ProgressionService.BuyUpgrade(player, heroId, upgradeId)
 	return true, "UpgradePurchased"
 end
 
-function ProgressionService.BuyHero(player, heroId)
+-- Private ownership, never replicated display attributes, controls discovery.
+function ProgressionService.GetNextHero(player)
+	if not playerHeroes[player] then return nil end
+	for _, id in HeroConfig.HeroOrder do
+		if not ProgressionService.OwnsHero(player, id) then return id end
+	end
+	return nil
+end
+
+function ProgressionService.PurchaseNextHero(player)
 	local allowed, reason = beginPurchase(player)
-	if not allowed then
-		return false, reason
-	end
-	if not validId(heroId) or not getState(player, heroId) then
-		return false, "InvalidHero"
-	end
-	local state = getState(player, heroId)
-	if state.Owned then
-		return false, "AlreadyOwned"
-	end
+	if not allowed then return false, reason end
+	local heroId = ProgressionService.GetNextHero(player)
+	if not heroId then return false, "AllHeroesOwned" end
 	if not EconomyService.SpendGold(player, HeroConfig[heroId].UnlockCost) then
 		return false, "NotEnoughGold"
 	end
+	local state = getState(player, heroId)
 	state.Owned = true
 	state.Level = startingLevel(heroId)
 	publish(player)
-	return true, "HeroPurchased"
+	ownedEvent:Fire(player, heroId) -- Stable Instance and ID, not a mutable ownership table.
+	return true, "HeroPurchased", heroId
 end
 
 function ProgressionService.Start()
@@ -343,7 +355,6 @@ function ProgressionService.Start()
 	end
 	remote("BuyHeroLevels", 2, ProgressionService.BuyHeroLevels)
 	remote("BuyHeroLevel", 1, ProgressionService.BuyHeroLevel)
-	remote("BuyHero", 1, ProgressionService.BuyHero)
 	remote("BuyUpgrade", 2, ProgressionService.BuyUpgrade)
 	remotes.Parent = ReplicatedStorage
 end
