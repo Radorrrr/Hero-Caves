@@ -60,6 +60,8 @@ function HeroShopService.PurchaseNextHero(player, token)
 	lastRequest[player] = now
 	if type(token) ~= "string" or token ~= record.Token then return false, "StaleOffer" end
 	if not nearMerchant(player) then return false, "OutOfRange" end
+	local island = Islands.GetIsland(player)
+	if not island or island.Owner ~= player then return false, "ClaimIslandFirst" end
 	if Progression.GetNextHero(player) ~= record.NextHeroId then publish(player); return false, "StaleOffer" end
 	local success, reason = Progression.PurchaseNextHero(player)
 	if success then

@@ -98,6 +98,7 @@ instanceMt.__index=function(o,k)
  end end
 
  if k=='Parent' then return o.Data.Parent end
+ if k=='WorldPosition' and o.ClassName=='Attachment' then return (o.Parent.CFrame*CFrame.new(o.Position)).Position end
  if k=='Position' then return o.Data.CFrame and o.Data.CFrame.Position or o.Data.Position or Vector3.zero end
  
  if k=='SetAttribute' then return function(self,name,v)
@@ -126,7 +127,16 @@ instanceMt.__index=function(o,k)
  for _,child in objects do if child.Parent==o and child.Name==k then return child end end
  return nil
 end
-instanceMt.__newindex=function(o,k,v) o.Data[k]=v end
+instanceMt.__newindex=function(o,k,v)
+ o.Data[k]=v
+ if k=='Parent' and v then
+  local current=v
+  while current do
+   if current.DescendantAdded then current.DescendantAdded:Fire(o) end
+   current=current.Parent
+  end
+ end
+end
 -- Roblox copies Lua tables across BindableEvent arguments; Instances retain identity.
 -- Preserve mock userdata (Instance/Vector3/CFrame metatables), copy plain tables.
 local function copyBindableValue(value, seen)
@@ -160,7 +170,7 @@ function Instance.new(class)
  elseif class=='ProximityPrompt' then o.Triggered=signal()
  elseif class=='TextButton' then o.Activated=signal() end
 
- o.AttributeChanged=signal()
+ o.AttributeChanged=signal();o.DescendantAdded=signal()
  if class=='Part' or class=='SpawnLocation' then o.Touched=signal() end
  if class=='Player' then o.CharacterAdded=signal() end
  table.insert(objects,o)
@@ -189,6 +199,12 @@ local storage=Instance.new('ReplicatedStorage'); storage.Shared=shared
 local players=Instance.new('Players')
 players.PlayerAdded=signal(); players.PlayerRemoving=signal(); players.List={}
 function players:GetPlayers() return table.clone(self.List) end
+local thumbnailRequests={}
+function players:GetUserThumbnailAsync(id,kind,size)
+ table.insert(thumbnailRequests,{id,kind,size})
+ assert(kind=='HeadShot' and size=='Size180x180')
+ return 'rbxthumb://type=AvatarHeadShot&id='..id..'&w=180&h=180',true
+end
 local function addPlayer(id,name)
  local p=Instance.new('Player'); p.UserId=id; p.Name=name; p.DisplayName=name; p.Parent=players
  table.insert(players.List,p); players.PlayerAdded:Fire(p); return p
@@ -204,8 +220,9 @@ local playerGui=Instance.new('PlayerGui'); playerGui.Name='PlayerGui'; playerGui
 local Vector2={new=function(...) return {...} end}
 local UDim={new=function(...) return {...} end}
 Enum.KeyCode={E='E'}
+Enum.ThumbnailType={HeadShot='HeadShot'};Enum.ThumbnailSize={Size180x180='Size180x180'}
 Enum.Material.Wood='Wood'; Enum.Material.Neon='Neon'; Enum.PartType.Block='Block'
-Enum.Font.Gotham='Gotham'; Enum.TextXAlignment={Left='Left',Right='Right'}
+Enum.Font.Gotham='Gotham'; Enum.TextXAlignment={Left='Left',Right='Right',Center='Center'}
 Enum.AutomaticSize={Y='Y'}; Enum.ScrollingDirection={Y='Y'}; Enum.SortOrder={LayoutOrder='LayoutOrder'}
 
 local services={CombatDebugState='CombatDebugState',CombatDebugService='CombatDebugService',GoldPopup='GoldPopup',CombatDebugPanel='CombatDebugPanel',EnemyService='EnemyService',WaveService='WaveService',CombatService='CombatService',HeroService='HeroService',EconomyService='EconomyService',ProgressionService='ProgressionService',Parent={ProgressionMath='ProgressionMath',UpgradeEffects='UpgradeEffects',Heroes={KnightRig='KnightRig',RangedRig='RangedRig'}}}

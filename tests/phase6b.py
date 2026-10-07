@@ -227,9 +227,10 @@ local p2=addPlayer(102,'Second');local b=claim(p2,4)
 local panel=playerGui.IdleHeroSimulatorProgression.Panel
 assert(not panel.HeroTabs.Archer.Visible and not panel.HeroTabs.Mage.Visible)
 visitShop(p1);playerGui.IdleHeroSimulatorHeroShop.Panel.Buy.Activated:Fire()
-assert(progression.OwnsHero(p1,'Archer') and not manager.GetContext(p1))
-assert(alive('Model','Archer')==0)
-local a=claim(p1,1);assert(#a.Heroes==2 and active(a,'Archer') and #b.Heroes==1)
+assert(not progression.OwnsHero(p1,'Archer') and not manager.GetContext(p1))
+assert(alive('Model','Archer')==0 and economy.GetGold(p1)==2000)
+local a=claim(p1,1);visitShop(p1);playerGui.IdleHeroSimulatorHeroShop.Panel.Buy.Activated:Fire()
+assert(#a.Heroes==2 and active(a,'Archer') and #b.Heroes==1)
 visitShop(p1);advance(.3);playerGui.IdleHeroSimulatorHeroShop.Panel.Buy.Activated:Fire();advance(.01)
 assert(progression.OwnsHero(p1,'Mage') and active(a,'Mage') and #a.Heroes==3 and not active(b,'Mage'))
 local before=progression.GetHeroLevel(p1,'Archer')
@@ -237,7 +238,7 @@ panel.HeroTabs.Archer.Activated:Fire();advance(.3);panel.LevelUp.Activated:Fire(
 assert(progression.GetHeroLevel(p1,'Archer')==before+1 and progression.GetHeroLevel(p2,'Archer')==1)
 heroes.Start(a);heroes.Start(b);manager.StartCombat(p1,a.Island);assert(connected()==5)
 validateContext(a);validateContext(b)
-print('PASS: purchases in Hub wait for claim, preowned crew spawns, subsequent Mage buy spawns only on buyer island, unchanged local UI/level request and no duplicate loops')
+print('PASS: shop purchases blocked until claim; Archer/Mage buys spawn only on buyer island, unchanged local UI/level request and no duplicate loops')
 ''')
 scenarios['debug-local']=(allheroes+'modules.GameConfig.StudioTesting.StartingHeroLevels={Knight=50,Archer=150,Mage=150}\n',ui+r'''
 local remote=storage.IdleHeroSimulatorCombatDebug.Control

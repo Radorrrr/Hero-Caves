@@ -63,18 +63,25 @@ function HeroShopPanel.Start()
 		local id = offer:GetAttribute("HeroId")
 		local price = offer:GetAttribute("Cost") or 0
 		local hasOffer = id ~= nil and offer:GetAttribute("OfferToken") ~= nil
+		local hasIsland = player:GetAttribute("IslandId") ~= nil
 		gold.Text = "GOLD: " .. NumberFormatter.Format(balance)
 		name.Text = hasOffer and string.upper(offer:GetAttribute("HeroName") or "") or "ALL HEROES UNLOCKED"
 		stats.Text = hasOffer and string.format("%s\nDamage: %s\nAttack Speed: %.2f attacks/s",
 			offer:GetAttribute("Role") or "", NumberFormatter.Format(offer:GetAttribute("Damage")),
 			offer:GetAttribute("AttackSpeed") or 0) or "More heroes coming later."
 		cost.Text = hasOffer and ("Cost: " .. NumberFormatter.Format(price) .. " Gold") or ""
-		buy.Visible = hasOffer
-		local affordable = hasOffer and balance >= price and not pending
+		buy.Visible = hasOffer or not hasIsland
+		local affordable = hasIsland and hasOffer and balance >= price and not pending
 		buy.Active, buy.AutoButtonColor = affordable, affordable
 		buy.BackgroundColor3 = affordable and Color3.fromRGB(50, 130, 85) or Color3.fromRGB(75, 80, 90)
 		buy.Text = pending and "PURCHASING..." or (balance < price and "NOT ENOUGH GOLD"
 			or ("BUY " .. string.upper(offer:GetAttribute("HeroName") or "")))
+		if not hasIsland then
+			name.Text = "CLAIM AN ISLAND FIRST"
+			stats.Text = "Claim an island before purchasing heroes."
+			cost.Text = ""
+			buy.Text = "CLAIM AN ISLAND FIRST"
+		end
 	end
 	open.OnClientEvent:Connect(function()
 		feedback.Text = ""
@@ -84,7 +91,7 @@ function HeroShopPanel.Start()
 	close.Activated:Connect(function() gui.Enabled = false end)
 	buy.Activated:Connect(function()
 		local token, price = offer:GetAttribute("OfferToken"), offer:GetAttribute("Cost")
-		if not gui.Enabled or pending or not offer:GetAttribute("HeroId") or not token or not price
+		if player:GetAttribute("IslandId") == nil or not gui.Enabled or pending or not offer:GetAttribute("HeroId") or not token or not price
 			or (player:GetAttribute("Gold") or 0) < price then return end
 		if time() - lastRequest < GameConfig.Economy.PurchaseCooldown then return end
 		lastRequest, pending = time(), true
@@ -94,6 +101,7 @@ function HeroShopPanel.Start()
 		purchase:FireServer(token)
 	end)
 	local messages = {HeroPurchased = "Hero unlocked!", NotEnoughGold = "Not enough gold.",
+		ClaimIslandFirst = "Claim an island before purchasing heroes.",
 		AllHeroesOwned = "All heroes unlocked.", OutOfRange = "Return to the Hero Merchant to buy.",
 		StaleOffer = "Offer changed. Please try again.", TooFast = "Please wait a moment.",
 		InvalidPlayer = "Progression is not available.", InvalidRequest = "Invalid shop request."}
@@ -106,6 +114,7 @@ function HeroShopPanel.Start()
 	-- Attribute replication need not arrive in assignment order; every offer field can refresh the view.
 	offer.AttributeChanged:Connect(render)
 	player:GetAttributeChangedSignal("Gold"):Connect(render)
+	player:GetAttributeChangedSignal("IslandId"):Connect(render)
 	player.CharacterAdded:Connect(function() gui.Enabled = false end)
 	render()
 	gui.Parent = playerGui

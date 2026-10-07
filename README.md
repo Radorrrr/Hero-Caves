@@ -1,6 +1,6 @@
 # Idle Hero Simulator
 
-Roblox/Rojo prototype through **Phase 6C**: a neutral floating Hub, six
+Roblox/Rojo prototype through **Phase 6C.1**: a neutral floating Hub, six
 claimable floating islands, and independent server-authoritative combat for
 every island owner. Each owner has their own heroes, enemy, waves, bosses,
 gold and progression. Joining alone starts no combat.
@@ -9,8 +9,8 @@ gold and progression. Joining alone starts no combat.
 unowned hero. The temporary HUD now shows only owned heroes and their existing
 level/milestone controls. **Phase 6D (clickable physical hero upgrades), saving/
 DataStore and offline progress are NOT implemented.** Progress is in memory and
-is lost on leaving. Phase 6B was confirmed working in a real Studio two-client
-test by the project owner; the new Phase 6C features still require Studio testing.
+is lost on leaving. The project owner confirmed Phase 6B and Phase 6C working
+in real Studio tests. The new Phase 6C.1 polish still requires Studio verification.
 
 ## Run with Rojo
 
@@ -25,6 +25,87 @@ source/configuration changes: required modules are cached. The server builds
 the prototype geometry and combat models; no binary model/place file is required.
 `default.project.json` maps Shared to ReplicatedStorage, Server to
 ServerScriptService, and Client to StarterPlayerScripts.
+
+## Phase 6C.1 — shop, owner portrait and world UI polish
+
+All five requested changes are implemented without starting Phase 6D:
+
+- Shop opening works before claim, but its UI shows **CLAIM AN ISLAND FIRST**.
+  IslandId changes refresh an already open panel. Purchases require the server's
+  private IslandService record with the same Player owner; forged replicated
+  attributes cannot bypass the check. No gold/ownership changes occur on rejection.
+- Each claimed island gets one OwnerAvatar BillboardGui containing a circular
+  Roblox headshot and the owner's cave name. Players:GetUserThumbnailAsync uses
+  HeadShot / Size180x180 in a separate task. Failed/not-ready requests retain a
+  PLAYER placeholder and readable owner name. A late result is accepted only
+  for the same owner and same live GUI. Release, leave and world regeneration
+  destroy the display; reuse creates the new owner's display. The old UNCLAIMED
+  sign is restored on release. Name and portrait share one layout to avoid overlap.
+- Generated spawn references were already invisible. Startup now also hides
+  existing SpawnLocations near the Hub surface, including their Decals/Textures
+  and later-added decals. Hidden legacy spawns retain their enabled state; distant
+  unrelated spawns are preserved. The world records HiddenLegacyHubSpawns.
+  RespawnLocation assignment and existing void recovery are unchanged.
+- HubTitleAnchor is an invisible Attachment on the Hub platform, centered in
+  world X/Z, WorldConfig.HubTitleHeight (18 studs) above its top. The centered
+  IDLE HERO SIMULATOR · HUB billboard has zero world/local offset and is separate
+  from the offset PlayerSpawn and shopkeeper. Only its face rotates toward viewers.
+- Every enemy's own HealthDisplay now has WAVE N or WAVE N · BOSS, then its name
+  (and boss countdown), HP text and HP bar. Wave data comes from that enemy's
+  personal record, not a shared global label. Damage, rewards and deadlines remain
+  unchanged. OwnerAvatarHeight (11) and OwnerAvatarMaxDistance (300) are configurable.
+
+Changed files: src/server/Services/{HeroShopService,IslandService,EnemyService}.lua,
+src/client/HeroShopPanel.lua, src/shared/WorldConfig.lua, tests/{phase6b,phase6c,
+phase6c1}.py, tests/roblox_mock.luau and this README. No balance/config changes,
+new heroes, saving, offline rewards or final art were added.
+
+### Exact Phase 6C.1 Studio verification
+
+Pull main, serve with Rojo 7.7.1, sync the **entire** project and restart Play.
+Use StudioTesting.Enabled=true, StartingGold=2000, all StartingHeroLevels=1,
+and StartingOwnedHeroes={Archer=false,Mage=false} for this test only.
+
+1. Join the Hub; confirm no combat and no visible SpawnLocation plate or decals.
+2. Inspect the centered HUB title from several camera angles and distances;
+   its anchor must remain over the Hub center, separate from the merchant.
+3. Walk to HERO SHOP and open with E without claiming.
+4. Confirm CLAIM AN ISLAND FIRST and a disabled purchase button.
+5. Try buying; gold and Archer/Mage ownership must remain unchanged.
+6. Claim a free island; confirm one cave, Knight and enemy.
+7. Immediately inspect WAVE 1, enemy name, HP text and bar above that enemy.
+   Wave 1 advances quickly with the normal Knight; repeat a fresh session if missed.
+8. Confirm the claimed island shows your Roblox headshot and cave name together.
+   If the thumbnail service fails, its fallback must not block claim/combat.
+9. Return to the merchant and reopen; the next offer is Archer, cost 100.
+10. Buy Archer; subtract exactly 100 from the current balance, allowing natural
+    combat income while walking. One Archer appears on your island immediately.
+11. Confirm the open shop changes to Mage without resetting combat.
+12. Buy Mage for 1000; one Mage appears and the shop shows ALL HEROES UNLOCKED.
+13. Watch a normal transition: WAVE 2 (or the current later wave) matches that
+    enemy's Wave attribute, and HP/name/bar remain readable.
+14. At a boss confirm WAVE 5 · BOSS (or a later boss wave) and the existing
+    countdown/HP/bar. A kill or timeout must update the next enemy's wave label.
+15. Reset your avatar; respawn on your island with unchanged ownership, portrait,
+    combat context and enemy/boss deadline. No duplicate rigs or billboards.
+16. Jump into void as an owner; return to your island without combat restart.
+    In a fresh session, fall before claim and return to Hub.
+17. Start Server & Clients with two players. A and B claim different islands;
+    each displays its own name/headshot and has separate combat.
+18. Pause B using B's existing Studio debug panel and let A advance; the world
+    labels must show their different waves. Resume B; its timer/state stay personal.
+19. Close A's client: its portrait/cave/combat disappear and its sign is UNCLAIMED;
+    B's portrait, shop state and combat remain intact.
+20. Join a new client and claim A's freed island: show the new player's headshot/
+    name, one fresh Wave 1 context and no stale portrait. Restore testing defaults,
+    sync/restart and verify no Studio debug/RESET HERO controls in production mode.
+
+Also run the single-/two-player combat, claim-race, upgrade, projectile and timeout
+checks below. Automated checks cover all 53 scenarios, Luau compilation, Rojo
+sourcemap and a temporary Rojo build with XML source validation. They execute
+real project modules with mocks, not Roblox Studio: camera rendering, real avatar
+thumbnail availability, network replication, prompts and engine physics remain
+manual checks. No claim is made that these new visuals were tested in Studio.
 
 ## Phase 6C — Hero Shop and sequential discovery
 
@@ -83,7 +164,7 @@ Remotes live in the existing `IdleHeroSimulatorRemotes` folder:
 The private offer token changes after each ownership transition. It is a replay
 identifier, not a secret. A delayed duplicate Archer token cannot buy Mage.
 Server validation checks exact argument count, player/record, cooldown, token,
-live character/distance and the next private hero. ProgressionService performs
+live character/distance, private island ownership and the next private hero. ProgressionService performs
 the same existing cooldown/affordability validation and atomically deducts the
 configured price, grants that next hero, publishes stats and emits HeroOwned
 with a Player Instance and hero ID. Failed/stale/skipping/out-of-range requests
@@ -93,8 +174,8 @@ On success HeroShopService calls HeroService.RefreshOwnedHeroes for the buyer's
 existing context. The new rig is added immediately at ArcherSlot/MageSlot using
 the same synchronization routine and existing context update connection. Wave,
 enemy, boss deadline, Knight and other players stay unchanged. Without an island,
-only ownership changes: no Hub hero/enemy/context is created; claim later spawns
-the owned crew. The offer updates in the open shop immediately to Mage or the
+purchases fail with ClaimIslandFirst before any gold deduction or ownership change.
+Opening the shop remains allowed and explains the claim requirement. The offer updates in the open shop immediately to Mage or the
 all-owned message. Normal Gold HUD also updates from the actual balance.
 
 The old free-choice BuyHero remote/API and BUY HERO branch are removed. Normal
@@ -112,13 +193,15 @@ testing values remain Studio-gated, with no separate currency or production chea
    purchase buttons/tabs. Confirm the visible HERO SHOP merchant at the configured
    diagonal Hub position without blocking spawn or a bridge.
 3. Walk within 12 studs, use the E prompt. The centered shop opens and offers
-   **only Archer**, damage 8, 1.43 attacks/s, cost 100. No Mage preview anywhere
-   in the shop. CLOSE/reopen several times: one GUI and current Archer offer.
-4. Buy Archer before claiming. Gold goes exactly 2000 -> 1900; same shop switches
-   to Mage (55 damage, 0.42 attacks/s, cost 1K). Archer ownership/tab appears, but
-   there is still no Hub hero/enemy/context. Double-click must not buy Mage.
-5. Close and claim Island 1. Knight+Archer spawn at their markers; arrows attack
-   that island's enemy. Note its Combat.ContextId, Wave, enemy and Knight.
+   **CLAIM AN ISLAND FIRST**, with the purchase button disabled. No Mage preview
+   anywhere in the shop. CLOSE/reopen several times: one GUI, still blocked.
+4. Try purchasing before claiming: gold and ownership stay unchanged, and there
+   is still no Hub hero/enemy/context. Close and claim Island 1: Knight and a
+   Wave 1 enemy spawn. Note its Combat.ContextId, Wave, enemy and Knight.
+5. Return to the Hub merchant and open again. Only Archer is offered: damage 8,
+   1.43 attacks/s, cost 100. Buy it; exactly 100 is deducted from the current
+   balance and one Archer immediately joins that island. The open shop switches
+   to Mage (55 damage, 0.42 attacks/s, cost 1K). Double-click must not buy Mage.
 6. Return to the merchant while combat continues. Open and buy Mage: gold drops
    by exactly 1000 from its current value (kills may earn gold during walking).
    Mage immediately appears at Island1.MageSlot without resetting enemy, wave,
@@ -128,7 +211,8 @@ testing values remain Studio-gated, with no separate currency or production chea
    bulk modes still work in the temporary HUD.
 8. Reset the avatar, reopen the shop and confirm session ownership is preserved.
    Repeat from a fresh session with StartingGold=99: Archer BUY is disabled and
-   reads NOT ENOUGH GOLD. Claim and earn gold; reopen after returning to Hub:
+   reads CLAIM AN ISLAND FIRST before claim, then NOT ENOUGH GOLD after claim.
+   Earn gold; reopen after returning to Hub:
    affordability must reflect your real current balance. Leave range with shop
    open and try BUY: server rejects it without gold/ownership changes.
 9. Restore Enabled=false and temporary values. In a fresh normal session shop
@@ -166,7 +250,7 @@ testing values remain Studio-gated, with no separate currency or production chea
 All **47** source-level scenarios pass: 38 previous regressions plus nine shop
 cases covering sequential/live UI, skipping/spoof/replay/range/dead-character
 security, insufficient funds/configured order, immediate active-context purchase,
-pre-claim purchase/respawn, two-client personal UI, GUI/world/player lifecycle,
+pre-claim rejection/respawn, two-client personal UI, GUI/world/player lifecycle,
 production gates/original stats and deferred ownership events. No new per-frame
 shop loops or remote broadcasts. Full Luau compilation, Rojo sourcemap and a
 Rojo build/XML module validation pass.
@@ -281,7 +365,8 @@ boss countdown updates occur only when the displayed second changes.
 
 Claim creates a fresh context, Wave 1 enemy and currently owned heroes. Buying
 Archer/Mage after claim adds exactly one rig on the buyer's island at the next
-hero update. Buying before claim changes progression only, then spawns at claim.
+hero update. Shop purchases before claim are rejected without progression changes.
+Heroes already owned through session progression or Studio configuration spawn at claim.
 
 CharacterAdded/void recovery changes the avatar location only. Existing context,
 wave, enemy, heroes and boss deadline survive avatar reset; no duplicate loops
@@ -417,9 +502,10 @@ from the caller's real progression.
 5. Stop Play. Set StudioTesting Enabled=true, StartingGold=2000,
    StartingHeroLevels={Knight=1,Archer=1,Mage=1},
    StartingOwnedHeroes={Archer=false,Mage=false}. Sync/restart. Debug says
-   NO ACTIVE COMBAT AREA; pause/reset actions in Hub have no effect. Walk to the Hub merchant, press E and buy Archer
-   for 100 before claiming; no physical hero spawns yet. Claim Island 1:
-   Knight+Archer spawn. Return to the Hub merchant and buy Mage for 1000: exactly one Mage appears at MageSlot.
+   NO ACTIVE COMBAT AREA; pause/reset actions in Hub have no effect. Walk to the
+   Hub merchant and press E: CLAIM AN ISLAND FIRST blocks purchases. Claim
+   Island 1: Knight spawns. Return to the merchant and buy Archer for 100, then
+   Mage for 1000: exactly one rig of each appears at its configured slot.
    Observe arrows/bolts hit only this island's captured enemy.
 6. Level each hero separately through x1/x10/x25/x100/MAX/NEXT; inspect exact
    counts/costs, partial affordability and milestone availability. For fast
@@ -487,7 +573,10 @@ from the caller's real progression.
 `tests/phase6b.py` loads the actual current modules and executes all 38 prior
 regressions against `tests/roblox_mock.luau`. The two obsolete purchase tests were
 migrated to the new shop request; their ownership/security/claim assertions remain.
-`tests/phase6c.py` runs those 38 plus nine new shop scenarios: **47 passed**.
+`tests/phase6c.py` runs those 38 plus nine shop scenarios.
+`tests/phase6c1.py` runs all 47 plus six polish regressions: **53 passed**.
+Earlier shop cases now expect the requested pre-claim rejection; security,
+post-claim purchases and lifecycle assertions remain exercised.
 Existing progression/security cases are in `tests/progression_regressions.json`.
 The mock preserves BindableEvent table copying and now routes FireClient only to
 that simulated client's listeners. Run with Python 3 and a Luau CLI:
@@ -495,6 +584,7 @@ that simulated client's listeners. Run with Python 3 and a Luau CLI:
 ```sh
 LUAU_BIN=/path/to/luau python3 tests/phase6b.py
 LUAU_BIN=/path/to/luau python3 tests/phase6c.py
+LUAU_BIN=/path/to/luau python3 tests/phase6c1.py
 luau-compile src/shared/*.lua src/server/*.lua src/server/Services/*.lua src/server/Heroes/*.lua src/client/*.lua
 rojo sourcemap default.project.json --output /tmp/idle-hero-simulator-sourcemap.json
 ```

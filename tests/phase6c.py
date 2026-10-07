@@ -12,7 +12,8 @@ assert(not gui.Enabled and not playerGui.IdleHeroSimulatorProgression.Panel.Hero
 assert(not playerGui.IdleHeroSimulatorProgression.Panel.HeroTabs.Mage.Visible)
 assert(not storage.IdleHeroSimulatorRemotes:FindFirstChild('BuyHero') and progression.BuyHero==nil)
 assert(progression.GetNextHero(p1)=='Archer' and p1.HeroShop:GetAttribute('HeroId')=='Archer')
-visitShop(p1);assert(gui.Enabled and panel.Hero.Text=='ARCHER' and panel.Buy.Text=='BUY ARCHER')
+visitShop(p1);assert(gui.Enabled and panel.Hero.Text=='CLAIM AN ISLAND FIRST' and not panel.Buy.Active)
+local a=claim(p1,1);visitShop(p1);assert(gui.Enabled and panel.Hero.Text=='ARCHER' and panel.Buy.Text=='BUY ARCHER')
 for _,obj in gui:GetDescendants() do
  if obj.ClassName=='TextLabel' or obj.ClassName=='TextButton' then assert(not (obj.Text or ''):find('Mage') and not (obj.Text or ''):find('MAGE')) end
 end
@@ -32,7 +33,7 @@ p1.HeroShop:SetAttribute('AttackSpeed',0);p1.HeroShop:SetAttribute('AttackSpeed'
 assert(panel.Summary.Text:find('0.42 attacks/s',1,true))
 assert(#heroRemote.Requests[1]==1 and heroRemote.Requests[1][1]==old,'minimal request is only opaque offer token')
 assert(playerGui.IdleHeroSimulatorProgression.Panel.HeroTabs.Archer.Visible and not playerGui.IdleHeroSimulatorProgression.Panel.HeroTabs.Mage.Visible)
-assert(not manager.GetContext(p1) and alive('Model','Archer')==0 and alive('Model','Slime')==0)
+assert(manager.GetContext(p1)==a and active(a,'Archer') and #a.Heroes==2)
 economy.AddGold(p1,1000);advance(.3);panel.Buy.Activated:Fire()
 assert(economy.GetGold(p1)==0 and progression.OwnsHero(p1,'Mage') and not progression.GetNextHero(p1))
 assert(panel.Hero.Text=='ALL HEROES UNLOCKED' and not panel.Buy.Visible and panel.Summary.Text=='More heroes coming later.')
@@ -42,7 +43,7 @@ print('PASS: sequential single-offer discovery, no Mage preview, live gold/offer
 ''')
 
 scenarios['shop-security-replay-and-range']=(shop_testing,ui+r'''
-visitShop(p1);local token=p1.HeroShop:GetAttribute('OfferToken');local gold=economy.GetGold(p1)
+claim(p1,1);visitShop(p1);local token=p1.HeroShop:GetAttribute('OfferToken');local gold=economy.GetGold(p1)
 for _,payload in {{},{token,'Mage'},{'Mage'},{'Archer'},{false},{{}},{0/0},{math.huge},{p1},{token,0,p1}} do
  advance(.3);heroRemote.OnServerEvent:Fire(p1,table.unpack(payload))
  assert(economy.GetGold(p1)==gold and not progression.OwnsHero(p1,'Archer') and not progression.OwnsHero(p1,'Mage'))
@@ -71,7 +72,7 @@ scenarios['shop-insufficient-gold-and-config-order']=(shop_testing+r'''
 modules.GameConfig.StudioTesting.StartingGold=99
 modules.HeroConfig.HeroOrder={'Knight','Mage','Archer'}
 ''',r'''
-visitShop(p1);assert(progression.GetNextHero(p1)=='Mage' and p1.HeroShop:GetAttribute('HeroId')=='Mage')
+claim(p1,1);visitShop(p1);assert(progression.GetNextHero(p1)=='Mage' and p1.HeroShop:GetAttribute('HeroId')=='Mage')
 local token=p1.HeroShop:GetAttribute('OfferToken');buyNext(p1)
 assert(economy.GetGold(p1)==99 and not progression.OwnsHero(p1,'Mage') and not progression.OwnsHero(p1,'Archer'))
 assert(p1.HeroShop:GetAttribute('OfferToken')==token)
@@ -105,14 +106,16 @@ print('PASS: shop adds one rig immediately to own slot/context with no wave/enem
 
 scenarios['shop-before-claim-and-respawn']=(shop_testing,ui+r'''
 visitShop(p1);buyNext(p1)
-assert(progression.OwnsHero(p1,'Archer') and not manager.GetContext(p1) and alive('Model','Archer')==0)
-local a=claim(p1,3);assert(#a.Heroes==2 and active(a,'Archer') and not active(a,'Mage'))
+assert(not progression.OwnsHero(p1,'Archer') and not manager.GetContext(p1) and alive('Model','Archer')==0)
+assert(economy.GetGold(p1)==2000)
+local a=claim(p1,3);visitShop(p1);advance(.3);buyNext(p1)
+assert(#a.Heroes==2 and active(a,'Archer') and not active(a,'Mage'))
 local enemy=a.CurrentEnemy;local hero=active(a,'Archer')
 character(p1)
 assert(manager.GetContext(p1)==a and a.CurrentEnemy==enemy and active(a,'Archer')==hero)
 assert(not playerGui.IdleHeroSimulatorHeroShop.Enabled)
 visitShop(p1);assert(playerGui.IdleHeroSimulatorHeroShop.Panel.Hero.Text=='MAGE')
-print('PASS: purchase before island creates no Hub combat; later claim spawns owned crew; avatar reset retains ownership/context and shop reopens current offer')
+print('PASS: purchase before island is rejected without Hub combat; claim enables normal crew purchase; avatar reset retains ownership/context and shop reopens current offer')
 ''')
 
 scenarios['shop-personal-two-client-ui']=(shop_testing,ui+r'''
@@ -157,7 +160,7 @@ local remoteCount=#storage.IdleHeroSimulatorRemotes:GetChildren()
 islandService.Stop();assert(prompt.destroyed and npc.destroyed and not islandService.GetHeroShopPrompt())
 assert(not shop.PurchaseNextHero(p1,p1.HeroShop:GetAttribute('OfferToken')))
 islandService.Start();assert(islandService.GetHeroShopPrompt()~=prompt and #storage.IdleHeroSimulatorRemotes:GetChildren()==remoteCount)
-visitShop(p1);advance(.3);buyNext(p1);assert(progression.OwnsHero(p1,'Archer'))
+claim(p1,1);visitShop(p1);advance(.3);buyNext(p1);assert(progression.OwnsHero(p1,'Archer'))
 local folder=p1.HeroShop;removePlayer(p1);assert(folder.destroyed)
 local replacement=addPlayer(101,'Replacement');assert(replacement.HeroShop:GetAttribute('HeroId')=='Archer')
 print('PASS: configurable anchored Hub merchant away from spawn, distance-validated open, GUI/listener/remote uniqueness, world regeneration and player record cleanup')

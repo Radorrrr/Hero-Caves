@@ -16,12 +16,13 @@ end
 
 local function updateDisplay(enemy)
 	enemy.Model:SetAttribute("Health", enemy.Health)
+	enemy.WaveLabel.Text = "WAVE " .. tostring(enemy.Wave) .. (enemy.IsBoss and " · BOSS" or "")
 	enemy.HealthLabel.Text = string.format("%d / %d HP", enemy.Health, enemy.MaxHealth)
 	enemy.HealthFill.Size = UDim2.fromScale(enemy.Health / enemy.MaxHealth, 1)
 	if enemy.IsBoss then
 		local remaining = math.max(0, math.ceil(enemy.Deadline - time()))
 		enemy.Model:SetAttribute("TimeRemaining", remaining)
-		enemy.NameLabel.Text = string.format("[BOSS] %s · %ds", enemy.Name, remaining)
+		enemy.NameLabel.Text = string.format("%s · %ds", enemy.Name, remaining)
 	else
 		enemy.NameLabel.Text = enemy.Name
 	end
@@ -73,7 +74,7 @@ function EnemyService.Spawn(context, wave, isBoss)
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "HealthDisplay"
-	billboard.Size = UDim2.fromOffset(240, 80)
+	billboard.Size = UDim2.fromOffset(240, 106)
 	billboard.StudsOffset = Vector3.new(0, definition.Size.Y / 2 + 2, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Adornee = body
@@ -93,11 +94,12 @@ function EnemyService.Spawn(context, wave, isBoss)
 		return text
 	end
 
-	local nameLabel = label("EnemyName", 0)
-	local healthLabel = label("Health", 27)
+	local waveLabel = label("Wave", 0)
+	local nameLabel = label("EnemyName", 26)
+	local healthLabel = label("Health", 53)
 	local bar = Instance.new("Frame")
 	bar.Name = "HealthBar"
-	bar.Position = UDim2.new(0, 10, 0, 58)
+	bar.Position = UDim2.new(0, 10, 0, 84)
 	bar.Size = UDim2.new(1, -20, 0, 14)
 	bar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	bar.BorderSizePixel = 0
@@ -119,6 +121,7 @@ function EnemyService.Spawn(context, wave, isBoss)
 		Wave = wave,
 		GoldReward = goldReward,
 		Deadline = isBoss and (time() + GameConfig.BossTimeLimit) or nil,
+		WaveLabel = waveLabel,
 		NameLabel = nameLabel,
 		HealthLabel = healthLabel,
 		HealthFill = fill,

@@ -3,6 +3,9 @@ return {
 	HubPosition = Vector3.new(0, -2, 0),
 	HubSize = Vector3.new(88, 4, 88),
 	HubSpawnOffset = Vector3.new(0, 1, 22),
+	HubTitleHeight = 18,
+	OwnerAvatarHeight = 11, -- Above the ClaimZone, clear of the ownership sign/enemy UI.
+	OwnerAvatarMaxDistance = 300,
 	-- Diagonal Hub corner, away from spawn and all bridge approaches; relative to platform top.
 	HeroShopOffset = Vector3.new(22, 0, 18),
 	HeroShopActivationDistance = 12,

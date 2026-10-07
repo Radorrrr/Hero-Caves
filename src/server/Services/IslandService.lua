@@ -50,6 +50,30 @@ local function hideReference(object)
 	for _, child in object:GetDescendants() do
 		if child:IsA("Decal") or child:IsA("Texture") then child.Transparency = 1 end
 	end
+	if object:IsA("SpawnLocation") then
+		-- Spawn decals added after parenting must remain invisible too.
+		table.insert(connections, object.DescendantAdded:Connect(function(child)
+			if child:IsA("Decal") or child:IsA("Texture") then child.Transparency = 1 end
+		end))
+	end
+end
+
+-- Hide legacy Studio spawn plates in the Hub footprint without deleting spawn objects.
+local function hideLegacyHubSpawns()
+	local surfaceY = Config.HubPosition.Y + Config.HubSize.Y / 2
+	local hidden = 0
+	for _, object in workspace:GetDescendants() do
+		if object:IsA("SpawnLocation") and (not world or not object:IsDescendantOf(world)) then
+			local position = object.Position
+			if math.abs(position.X - Config.HubPosition.X) <= Config.HubSize.X / 2
+				and math.abs(position.Z - Config.HubPosition.Z) <= Config.HubSize.Z / 2
+				and math.abs(position.Y - surfaceY) <= 8 then
+				hideReference(object)
+				hidden += 1
+			end
+		end
+	end
+	return hidden
 end
 
 local function marker(name, frame, parent)
@@ -115,6 +139,72 @@ local function sign(anchor, text)
 	label.Text = text
 	label.Parent = gui
 	return label
+end
+
+local function clearOwnerAvatar(island)
+	if island.OwnerAvatar then island.OwnerAvatar:Destroy(); island.OwnerAvatar = nil end
+	island.Label.Parent.Enabled = true
+end
+
+local function showOwnerAvatar(island, player)
+	clearOwnerAvatar(island)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "OwnerAvatar"
+	gui.Adornee = island.Markers.ClaimZone
+	gui.Size = UDim2.fromOffset(300, 140)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, Config.OwnerAvatarHeight, 0)
+	gui.MaxDistance = Config.OwnerAvatarMaxDistance
+	gui.AlwaysOnTop = false
+	gui.LightInfluence = 0
+	gui:SetAttribute("OwnerUserId", player.UserId)
+	local image = Instance.new("ImageLabel")
+	image.Name = "Headshot"
+	image.Size = UDim2.fromOffset(88, 88)
+	image.Position = UDim2.new(0.5, -44, 0, 0)
+	image.BackgroundColor3 = Color3.fromRGB(40, 50, 65)
+	image.BorderSizePixel = 0
+	image.Image = ""
+	image.Parent = gui
+	local round = Instance.new("UICorner")
+	round.CornerRadius = UDim.new(0.5, 0)
+	round.Parent = image
+	local fallback = Instance.new("TextLabel")
+	fallback.Name = "Fallback"
+	fallback.Size = UDim2.fromScale(1, 1)
+	fallback.BackgroundTransparency = 1
+	fallback.Text = "PLAYER"
+	fallback.Visible = true
+	fallback.TextColor3 = Color3.fromRGB(235, 240, 250)
+	fallback.Font = Enum.Font.GothamBold
+	fallback.TextSize = 14
+	fallback.Parent = image
+	local ownerName = Instance.new("TextLabel")
+	ownerName.Name = "OwnerName"
+	ownerName.Position = UDim2.fromOffset(0, 94)
+	ownerName.Size = UDim2.new(1, 0, 0, 44)
+	ownerName.BackgroundTransparency = 1
+	ownerName.Text = island.Label.Text
+	ownerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ownerName.TextStrokeTransparency = 0.3
+	ownerName.Font = Enum.Font.GothamBold
+	ownerName.TextSize = 22
+	ownerName.TextWrapped = true
+	ownerName.Parent = gui
+	-- Stack portrait/name in one billboard so they cannot overlap at long distances.
+	island.Label.Parent.Enabled = false
+	gui.Parent = island.Model
+	island.OwnerAvatar = gui
+	-- Fetch can yield/fail. It must never delay ownership or change a reused island's icon.
+	task.spawn(function()
+		local success, content, ready = pcall(function()
+			return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size180x180)
+		end)
+		if island.Owner ~= player or island.OwnerAvatar ~= gui or not gui.Parent then return end
+		if success and ready and type(content) == "string" and content ~= "" then
+			image.Image = content
+			fallback.Visible = false
+		end
+	end)
 end
 
 local function showFeedback(player, message)
@@ -190,6 +280,7 @@ function IslandService.TryClaim(player, islandId)
 	island.Label.Text = player.DisplayName .. "'s Cave"
 	island.Markers.ClaimZone.Color = Color3.fromRGB(80, 175, 105)
 	island.Cave = cave(island)
+	showOwnerAvatar(island, player)
 	-- BindableEvents copy Lua tables. Send the stable runtime Model, not our ownership record.
 	if RunService:IsStudio() then
 		print(string.format("[CombatContext] Claim confirmed: %s -> %s; notifying combat", player.Name, island.Model.Name))
@@ -203,6 +294,7 @@ function IslandService.ReleaseIsland(player)
 	local island = playerIslands[player]
 	if island then
 		releasingEvent:Fire(player, island.Model)
+		clearOwnerAvatar(island)
 		island.Owner = nil
 		playerIslands[player] = nil
 		island.Model:SetAttribute("OwnerUserId", 0)
@@ -285,11 +377,13 @@ function IslandService.Start()
 	assert(not workspace:FindFirstChild(Config.FolderName), "World folder already exists")
 	assert(Config.VoidDepth > 0 and Config.VoidCheckInterval > 0, "Invalid void recovery settings")
 	local removedFloors = IslandService.RemoveGlobalFloors()
+	local hiddenSpawns = hideLegacyHubSpawns()
 	generation += 1
 	world = Instance.new("Folder")
 	world.Name = Config.FolderName
 	world.Parent = workspace
 	world:SetAttribute("RemovedGlobalFloorCount", removedFloors)
+	world:SetAttribute("HiddenLegacyHubSpawns", hiddenSpawns)
 	local hub = Instance.new("Model")
 	hub.Name = "Hub"
 	hub.Parent = world
@@ -297,7 +391,18 @@ function IslandService.Start()
 	part("Part", "Platform", Config.HubSize, hubFrame, hub, Color3.fromRGB(90, 110, 145))
 	local surface = Config.HubPosition + Vector3.new(0, Config.HubSize.Y / 2, 0)
 	hubSpawn = spawnPoint("PlayerSpawn", CFrame.new(surface + Config.HubSpawnOffset), hub)
-	sign(hubSpawn, "IDLE HERO SIMULATOR · HUB")
+	local titleAnchor = Instance.new("Attachment")
+	titleAnchor.Name = "HubTitleAnchor"
+	titleAnchor.Position = Vector3.new(0, Config.HubSize.Y / 2 + Config.HubTitleHeight, 0)
+	titleAnchor.Parent = hub.Platform
+	local title = sign(titleAnchor, "IDLE HERO SIMULATOR · HUB")
+	title.TextXAlignment = Enum.TextXAlignment.Center
+	title.Parent.Name = "HubTitle"
+	title.Parent.Size = UDim2.fromOffset(520, 70)
+	title.Parent.StudsOffset = Vector3.zero
+	title.Parent.StudsOffsetWorldSpace = Vector3.zero
+	title.Parent.AlwaysOnTop = false
+	title.Parent.MaxDistance = 350
 	shopPrompt = createHeroShop(hub, surface)
 	shopChanged:Fire(shopPrompt) -- Stable Instance identity across BindableEvent.
 	local folder = Instance.new("Folder")
