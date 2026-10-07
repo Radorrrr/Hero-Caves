@@ -30,9 +30,9 @@ gui.ResetOnSpawn = false
 gui.DisplayOrder = 10
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.AnchorPoint = Vector2.new(0.5, 0.5)
-panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.new(0, 360, 0.8, 0)
+panel.AnchorPoint = Vector2.new(0, 0)
+panel.Position = UDim2.fromOffset(16, 72)
+panel.Size = UDim2.new(0, 360, 0.8, -72)
 panel.Visible = false
 panel.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
 panel.BorderSizePixel = 0
@@ -292,3 +292,4 @@ render()
 gui.Parent = playerGui
 require(script.Parent.GoldPopup).Start(gui)
 require(script.Parent.CombatDebugPanel).Start(gui)
+require(script.Parent.HeroPromptVisibility).Start()

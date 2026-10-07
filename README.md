@@ -1,6 +1,6 @@
 # Idle Hero Simulator
 
-Roblox/Rojo prototype through **Phase 6D**: a neutral floating Hub, six
+Roblox/Rojo prototype through **Phase 6D.1**: a neutral floating Hub, six
 claimable floating islands and independent server-authoritative combat for
 every island owner. Each owner has their own heroes, enemy, waves, bosses,
 gold and progression. Joining alone starts no combat.
@@ -10,8 +10,8 @@ contextual upgrade menu. Normal gameplay keeps only compact Gold and Total DPS,
 plus reward popups. The separate Hub Hero Shop still discovers Archer -> Mage.
 **Saving/DataStore and Offline Progress are NOT implemented.** Progress is in
 memory and is lost on leaving. The project owner confirmed Phases 6A, 6B, 6C
-and 6C.1 working in real Studio multiplayer tests; new Phase 6D behavior still
-requires the Studio checks below. Reliable 10 Hz claim fallback remains intact.
+and 6C.1 working in real Studio multiplayer tests, and Phase 6D working in real
+Studio testing. New Phase 6D.1 positioning/prompt filtering still needs Studio checks. Reliable 10 Hz claim fallback remains intact.
 
 ## Run with Rojo
 
@@ -26,6 +26,96 @@ source/configuration changes: required modules are cached. The server builds
 the prototype geometry and combat models; no binary model/place file is required.
 `default.project.json` maps Shared to ReplicatedStorage, Server to
 ServerScriptService, and Client to StarterPlayerScripts.
+
+## Phase 6D.1 — left menu and owner-only upgrade prompts
+
+Only two UX changes were made. The contextual menu now anchors at (0,0) and starts
+at screen offset **(16,72) pixels**, with its existing 360-pixel width and size
+constraints. Its height uses 0.8 of the viewport minus 72 pixels. Knight, Archer
+and Mage reuse this same panel/position; contents, purchases and live updates
+are unchanged. Compact Gold remains at (16,12), 36 pixels high, ending at Y=48:
+there is a 24-pixel gap before the menu. Gold/Total DPS positioning was not changed.
+
+HeroPromptVisibility runs once per local player. It recognizes only the existing
+physical UpgradeHero ProximityPrompts and reads the nearest ancestor Model's
+existing replicated **OwnerUserId, HeroId and ContextId** attributes. These are
+safe public identifiers, not private progression/selection state. Locally, Enabled
+is true only when the owner UserId matches LocalPlayer and hero/context identifiers
+have arrived. Missing ownership/context metadata fails closed. These local writes
+never change the server's Enabled value or another client's view.
+
+The filter subscribes to Workspace.DescendantAdded before one startup scan of
+existing prompts. Newly claimed/purchased/recreated heroes are handled by that
+event; attribute changes handle delayed metadata. Prompt ancestry changes rebind
+the model reference; removal disconnects its property/ownership listeners. An
+Enabled-property listener reapplies filtering after replication updates. No
+heartbeat/poll loop, hero-name search or extra remote is added. The shared
+OpenHeroShop prompt is ignored and remains available to everyone.
+
+HeroUpgradeService, HeroService ownership assignment and ProgressionService
+security were not changed. Foreign prompt interaction and purchase requests still
+fail the existing private owner/context/physical-instance/token checks. Hiding
+prompts is UX only; a modified client cannot bypass the server validation.
+
+Changed: src/client/main.client.lua, new src/client/HeroPromptVisibility.lua,
+tests/phase6b.py, tests/roblox_mock.luau, new tests/phase6d1.py and README.md.
+The mock now separates each client's local Enabled overrides from server state
+and executes event callbacks in their registered client/server scope. All **78**
+scenarios pass: all previous 74 plus four tests covering left position/hero switch,
+owner-vs-foreign views/server rejection/shared shop, dynamically purchased heroes/
+context recreation/release/reuse, and delayed metadata/listener cleanup. Full
+Luau compilation, Rojo sourcemap and temporary build/XML validation of all 30
+script instances pass (server/client main are counted separately). No place/model artifact is committed.
+
+### Exact Phase 6D.1 Studio verification
+
+Pull main, run Rojo 7.7.1, sync the entire project and restart Play. Start two
+clients. For affordable Archer/Mage tests use the existing StudioTesting mode
+with StartingGold=2000, level-1 heroes and no starting Archer/Mage; restore defaults
+afterward. The existing Studio debug panel is expected only in testing mode.
+
+1. Start two clients A/B in Hub.
+2. Both claim different islands.
+3. A approaches A's Knight.
+4. A sees its Upgrade prompt and can open the menu.
+5. B approaches A's Knight.
+6. B must see no hero Upgrade prompt.
+7. B approaches B's Knight.
+8. B sees its own Upgrade prompt and can open the menu.
+9. A approaches B's Knight.
+10. A must see no hero Upgrade prompt.
+11. A buys Archer from the Hub shop.
+12. A returns to Archer and sees its Upgrade prompt.
+13. B approaches that Archer and sees no Upgrade prompt.
+14. Repeat with Mage; verify owner-only visibility without rejoining.
+15. Confirm the Hub Hero Shop prompt remains visible/usable by both clients.
+16. Server validation is still present: from the **server** Command Bar, resolve
+    A/B by their actual test-player names (replace Player1/Player2 as necessary)
+    and attempt a foreign hero interaction directly:
+
+    ```lua
+    local services = game.ServerScriptService.Server.Services
+    local a, b = game.Players:FindFirstChild("Player1"), game.Players:FindFirstChild("Player2")
+    assert(a and b, "Use the actual test-player names")
+    local context = require(services.CombatContexts).Get(a)
+    local hero = context.HeroesById.Knight
+    b.Character:PivotTo(hero.Model.PrimaryPart.CFrame)
+    assert(require(services.HeroUpgradeService).Open(b, hero) == false)
+    print("PASS: foreign interaction rejected by server")
+    ```
+
+17. Return to your own Knight and open its menu.
+18. Confirm the menu starts on the left with a 16-pixel edge margin.
+19. Confirm gameplay center stays clear; switch to Archer/Mage and check the
+    same menu position and unchanged stats/bulk/milestones/CLOSE/live updates.
+20. Confirm Gold stays readable above the panel and Total DPS remains upper right.
+
+Also leave/reuse an island or recreate a context: new owner prompts must update
+without rejoin; old prompt listeners must not retain stale visibility. Continue
+Phase 6D's single-/two-player regressions below. Cloud tests do not validate actual
+Roblox prompt rendering, metadata replication timing or viewport overlap; those
+require these real Studio checks. **Saving/DataStore and Offline Progress are
+NOT implemented.** No new heroes, map redesign or final UI redesign.
 
 ## Phase 6D — interact with a physical hero to upgrade
 
@@ -44,7 +134,7 @@ an active private context belonging to the interacting Player, the exact
 HeroesById entry/model in that context's HeroFolder, valid hero ID, private owned
 progression, enabled instance-bound prompt, and a living character/root within
 10 studs. A foreign or unowned hero opens nothing and exposes no other player's
-progression. Prompts can be visible to visitors; server rejection is authoritative.
+progression. Phase 6D.1 hides visitors' hero prompts locally; server rejection stays authoritative.
 
 ### Selection and purchases
 
@@ -92,7 +182,7 @@ without closing it because the physical hero itself remains valid.
 
 ### Contextual menu and compact permanent HUD
 
-The existing client/main.client.lua now keeps one normally hidden centered Panel
+The existing client/main.client.lua now keeps one normally hidden left-side Panel
 inside IdleHeroSimulatorProgression. It shows the selected hero's name, level,
 damage, attack speed in attacks/sec, DPS, personal Gold Multiplier, single next
 level cost, selected bulk quote, mode/Level Up buttons, own milestone rows and
@@ -132,7 +222,7 @@ expected in this mode. Test production HUD separately with Enabled=false.
    independent and only visible while StudioTesting is enabled.
 5. Walk within 10 studs of your physical Knight.
 6. Press E on its Upgrade prompt (or the platform's prompt input).
-7. One Knight menu opens, centered, with CLOSE and only Knight milestones.
+7. One Knight menu opens on the left, with CLOSE and only Knight milestones.
 8. Compare Level/Damage/Attack Speed/DPS to your HeroProgression.Knight attributes;
    default level 1: Damage 20, speed 0.77 attacks/sec, rounded displayed DPS 15.
 9. In x1 mode buy one level; compare gold deduction with the server quote.
@@ -875,6 +965,7 @@ LUAU_BIN=/path/to/luau python3 tests/phase6c.py
 LUAU_BIN=/path/to/luau python3 tests/phase6c1.py
 LUAU_BIN=/path/to/luau python3 tests/claim_responsiveness.py
 LUAU_BIN=/path/to/luau python3 tests/phase6d.py
+LUAU_BIN=/path/to/luau python3 tests/phase6d1.py
 luau-compile src/shared/*.lua src/server/*.lua src/server/Services/*.lua src/server/Heroes/*.lua src/client/*.lua
 rojo sourcemap default.project.json --output /tmp/idle-hero-simulator-sourcemap.json
 ```
@@ -951,7 +1042,7 @@ contain Knight and a Wave 1 enemy, HasCombatArea must be true and TotalDPS about
 Island 2 and gets its separate Wave 1/Knight/enemy. Continue with the full
 single/two-player tests above, including owner-only gold/projectiles and release.
 The cloud regression is not a completed Studio retest; rendering/network/physics
-confirmation for the new Phase 6D changes still requires Studio.
+confirmation for new Phase 6D.1 changes still requires Studio.
 
 
 To verify the event boundary in the **real Roblox engine**, paste

@@ -1,5 +1,13 @@
 -- Minimal deterministic Roblox API mock; not a Studio/physics/network emulator.
 local localPlayer
+local clientRuntime=false
+local function runConnection(c,...)
+ local oldClient,oldPlayer=clientRuntime,localPlayer
+ clientRuntime=c.ClientRuntime or false
+ if clientRuntime then localPlayer=c.Player end
+ c.fn(...)
+ clientRuntime,localPlayer=oldClient,oldPlayer
+end
 local isStudio=true
 local warnings={}
 local function warn(message) table.insert(warnings,tostring(message)) end
@@ -61,17 +69,22 @@ local Instance={}
 local function signal()
  local s={Listeners={}}
  function s:Connect(fn)
-  local c={fn=fn,connected=true}
+  local c={fn=fn,connected=true,ClientRuntime=clientRuntime,Player=localPlayer}
   function c:Disconnect() self.connected=false end
   table.insert(self.Listeners,c); return c
  end
- function s:Fire(...) for _,c in self.Listeners do if c.connected then c.fn(...) end end end
+ function s:Fire(...) for _,c in self.Listeners do if c.connected then runConnection(c,...) end end end
  return s
 end
 local instanceMt={}
 
 
 instanceMt.__index=function(o,k)
+ if k=='Enabled' and o.ClassName=='ProximityPrompt' and clientRuntime and o.Data.ClientEnabled[localPlayer]~=nil then return o.Data.ClientEnabled[localPlayer] end
+ if k=='GetPropertyChangedSignal' then return function(self,name)
+  if not self.PropertySignals[name] then self.PropertySignals[name]=signal() end
+  return self.PropertySignals[name]
+ end end
  if k=='CFrame' and not o.Data.CFrame then return CFrame.new(o.Data.Position or Vector3.zero) end
  if k=='IsA' then return function(self,class)
   return self.ClassName==class or (class=='BasePart' and (self.ClassName=='Part' or self.ClassName=='SpawnLocation'))
@@ -128,7 +141,18 @@ instanceMt.__index=function(o,k)
  return nil
 end
 instanceMt.__newindex=function(o,k,v)
+ local old=o[k]
+ if k=='Enabled' and o.ClassName=='ProximityPrompt' and clientRuntime then
+  o.Data.ClientEnabled[localPlayer]=v
+  if old~=v and o.PropertySignals[k] then
+   for _,c in o.PropertySignals[k].Listeners do
+    if c.connected and c.ClientRuntime and c.Player==localPlayer then runConnection(c) end
+   end
+  end
+  return
+ end
  o.Data[k]=v
+ if old~=v and o.PropertySignals[k] then o.PropertySignals[k]:Fire() end
  if k=='Parent' then
   if o.AncestryChanged then o.AncestryChanged:Fire(o,v) end
   for _,child in objects do
@@ -154,7 +178,7 @@ local function copyBindableValue(value, seen)
 end
 function Instance.new(class)
  
- local o=setmetatable({Data={ClassName=class},attrs={},AttributeSignals={},destroyed=false},instanceMt)
+ local o=setmetatable({Data={ClassName=class,ClientEnabled={}},attrs={},AttributeSignals={},PropertySignals={},destroyed=false},instanceMt)
  if class=='BindableEvent' then
   o.Event=signal(); function o:Fire(...)
    local args=copyBindableValue(table.pack(...),{})
@@ -169,7 +193,7 @@ function Instance.new(class)
   function o:FireClient(player,...)
    table.insert(self.Responses,{player,...})
    for _,connection in self.OnClientEvent.Listeners do
-    if connection.connected and connection.Player==player then connection.fn(...) end
+    if connection.connected and connection.Player==player then runConnection(connection,...) end
    end
   end
   function o:FireServer(...) table.insert(self.Requests,{...}); self.OnServerEvent:Fire(localPlayer,...) end
@@ -271,4 +295,4 @@ function players:GetPlayerFromCharacter(character)
  for _,p in self.List do if p.Character==character then return p end end
 end
 shared.WorldConfig='WorldConfig'
-for _,name in {'CombatContexts','CombatContextService','IslandService','HeroShopService','HeroShopPanel','HeroUpgradeService'} do services[name]=name end
+for _,name in {'CombatContexts','CombatContextService','IslandService','HeroShopService','HeroShopPanel','HeroUpgradeService','HeroPromptVisibility'} do services[name]=name end
