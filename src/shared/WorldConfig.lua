@@ -1,5 +1,5 @@
 return {
-	FolderName = "IdleHeroesWorld",
+	FolderName = "IdleHeroSimulatorWorld",
 	HubPosition = Vector3.new(0, -2, 0),
 	HubSize = Vector3.new(88, 4, 88),
 	HubSpawnOffset = Vector3.new(0, 1, 22),

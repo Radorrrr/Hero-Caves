@@ -79,7 +79,7 @@ function EconomyService.Start()
 	end
 	started = true
 	goldAwarded = Instance.new("RemoteEvent")
-	goldAwarded.Name = "IdleHeroesGoldAwarded"
+	goldAwarded.Name = "IdleHeroSimulatorGoldAwarded"
 	goldAwarded.Parent = ReplicatedStorage
 	Players.PlayerAdded:Connect(initializePlayer)
 	Players.PlayerRemoving:Connect(function(player)

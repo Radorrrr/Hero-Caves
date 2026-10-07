@@ -9,7 +9,7 @@ local function startWave(context, wave)
 	if not Contexts.IsActive(context) then return end
 	context.CurrentWave = wave
 	context.Folder:SetAttribute("Wave", wave)
-	context.Player:SetAttribute("IdleHeroesWave", wave)
+	context.Player:SetAttribute("IdleHeroSimulatorWave", wave)
 	EnemyService.Spawn(context, wave, wave % GameConfig.BossEveryWaves == 0)
 end
 local function scheduleWave(context, wave)

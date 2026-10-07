@@ -8,8 +8,8 @@ local NumberFormatter = require(ReplicatedStorage.Shared.NumberFormatter)
 local CombatDebugPanel = {}
 function CombatDebugPanel.Start(gui)
 	if not RunService:IsStudio() or not GameConfig.StudioTesting.Enabled then return end
-	local data = Players.LocalPlayer:WaitForChild("IdleHeroesCombatDebug")
-	local remote = ReplicatedStorage:WaitForChild("IdleHeroesCombatDebug"):WaitForChild("Control")
+	local data = Players.LocalPlayer:WaitForChild("IdleHeroSimulatorCombatDebug")
+	local remote = ReplicatedStorage:WaitForChild("IdleHeroSimulatorCombatDebug"):WaitForChild("Control")
 	local panel = Instance.new("ScrollingFrame")
 	panel.Name = "CombatDebug"
 	panel.AnchorPoint = Vector2.new(1, 0)

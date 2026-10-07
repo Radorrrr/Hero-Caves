@@ -23,7 +23,7 @@ function CombatContextService.StopCombat(player, expectedIsland)
 	context.Folder:Destroy()
 	context.Folder, context.HeroFolder, context.EnemyFolder = nil, nil, nil
 	context.Player, context.Island = nil, nil
-	player:SetAttribute("IdleHeroesWave", 0)
+	player:SetAttribute("IdleHeroSimulatorWave", 0)
 end
 function CombatContextService.StartCombat(player, island)
 	if player.Parent ~= Players or IslandService.GetIsland(player) ~= island or island.Owner ~= player

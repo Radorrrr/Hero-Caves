@@ -43,14 +43,14 @@ function CombatDebugService.Start()
 	if started or not State.IsAvailable() then return end
 	started = true
 	local remotes = Instance.new("Folder")
-	remotes.Name = "IdleHeroesCombatDebug"
+	remotes.Name = "IdleHeroSimulatorCombatDebug"
 	local remote = Instance.new("RemoteEvent")
 	remote.Name = "Control"
 	remote.Parent = remotes
 	local function initializePlayer(player)
 		if snapshots[player] then return end
 		local data = Instance.new("Folder")
-		data.Name = "IdleHeroesCombatDebug"
+		data.Name = "IdleHeroSimulatorCombatDebug"
 		for _, id in HeroConfig.HeroOrder do
 			local folder = Instance.new("Folder")
 			folder.Name = id
