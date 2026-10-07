@@ -1,4 +1,4 @@
-# Hero Caves
+# Idle Heroes
 
 Roblox/Rojo prototype through **Phase 6B**: a neutral floating Hub, six
 claimable floating islands, and independent server-authoritative combat for
@@ -34,7 +34,7 @@ floor layers or generated global floor.
 Startup removes legacy anchored horizontal Baseplates/large floors underneath
 the generated map footprint, including nested models. It preserves small props,
 vertical geometry and distant floors. Output prints every removed object;
-`HeroCavesWorld.RemovedGlobalFloorCount` records the number removed. Do not
+`IdleHeroesWorld.RemovedGlobalFloorCount` records the number removed. Do not
 use a global Baseplate or another SpawnLocation for this prototype.
 
 Walk across a bridge and into the inward island claim area below the
@@ -78,7 +78,7 @@ idempotent; invalid/non-owner starts are rejected.
 Runtime objects live below:
 
 ```text
-Workspace.HeroCavesWorld
+Workspace.IdleHeroesWorld
   Hub                         -- no combat here
   Bridges.Bridge1 ... Bridge6
   Islands.Island1 ... Island6
@@ -227,8 +227,8 @@ prices, damage and target players are not authoritative inputs.
 Studio tools require both `RunService:IsStudio()` and
 `GameConfig.StudioTesting.Enabled = true`. Their controls and RESET HERO do not
 exist in production. With testing enabled, the local debug panel reads
-`Players.LocalPlayer.HeroCavesCombatDebug`; its Control remote lives in
-ReplicatedStorage.HeroCavesCombatDebug. Caller identity determines the context;
+`Players.LocalPlayer.IdleHeroesCombatDebug`; its Control remote lives in
+ReplicatedStorage.IdleHeroesCombatDebug. Caller identity determines the context;
 payloads cannot specify another player. Without an island it displays
 **NO ACTIVE COMBAT AREA** and actions do nothing.
 
@@ -335,7 +335,7 @@ a Luau CLI:
 ```sh
 LUAU_BIN=/path/to/luau python3 tests/phase6b.py
 luau-compile src/shared/*.lua src/server/*.lua src/server/Services/*.lua src/server/Heroes/*.lua src/client/*.lua
-rojo sourcemap default.project.json --output /tmp/hero-caves-sourcemap.json
+rojo sourcemap default.project.json --output /tmp/idle-heroes-sourcemap.json
 ```
 
 The 35 scenarios passed during Phase 6B implementation: neutral Hub, claim

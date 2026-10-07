@@ -42,7 +42,7 @@ local function character(player)
 end
 local function claim(player,id)
  if not player.Character then character(player) end
- local island=workspace.HeroCavesWorld.Islands['Island'..id]
+ local island=workspace.IdleHeroesWorld.Islands['Island'..id]
  player.Character:PivotTo(island.Markers.ClaimZone.CFrame)
  island.Markers.ClaimZone.Touched:Fire(player.Character.HumanoidRootPart)
  return manager.GetContext(player)
@@ -68,9 +68,9 @@ end
 local script={Parent={Services=services}}
 '''
 start=(root/'src/server/main.server.lua').read_text()+'''
-local remote=storage.HeroCavesRemotes.BuyHeroLevel
-local upgradeRemote=storage.HeroCavesRemotes.BuyUpgrade
-local heroRemote=storage.HeroCavesRemotes.BuyHero
+local remote=storage.IdleHeroesRemotes.BuyHeroLevel
+local upgradeRemote=storage.IdleHeroesRemotes.BuyUpgrade
+local heroRemote=storage.IdleHeroesRemotes.BuyHero
 '''
 ui='\n;(function()\nlocal script={Parent=services}\n'+(root/'src/client/main.client.lua').read_text()+'\nend)()\n'
 scenarios={}
@@ -83,13 +83,13 @@ for name in ['milestones','security','bulk-x1','bulk-x10','bulk-x25','bulk-x100'
  test=test.replace('waves.GetCurrentWave()','waves.GetCurrentWave(context)')
  scenarios['regression-'+name]=(before,test)
 scenarios['no-before-claim']=('',ui+r'''
-assert(p1.RespawnLocation==workspace.HeroCavesWorld.Hub.PlayerSpawn)
+assert(p1.RespawnLocation==workspace.IdleHeroesWorld.Hub.PlayerSpawn)
 assert(not manager.GetContext(p1) and not registry.Get(p1) and not p1:GetAttribute('HasCombatArea'))
 assert(p1:GetAttribute('TotalDPS')==0 and progression.GetHeroLevel(p1,'Knight')==1)
 assert(alive('Model','Knight')==0 and alive('Model','Slime')==0 and connected()==1)
-assert(not workspace:FindFirstChild('HeroCavesEnemies') and not workspace:FindFirstChild('HeroCavesHeroes'))
+assert(not workspace:FindFirstChild('IdleHeroesEnemies') and not workspace:FindFirstChild('IdleHeroesHeroes'))
 advance(35);assert(alive('Model','Knight')==0 and alive('Model','Slime')==0 and economy.GetGold(p1)==0)
-assert(p1:GetAttribute('HeroCavesWave')==nil)
+assert(p1:GetAttribute('IdleHeroesWave')==nil)
 local context=claim(p1,1);assert(context and context.CurrentWave==1 and #context.Heroes==1)
 assert(active(context,'Knight').Model:GetAttribute('OwnerUserId')==101)
 assert((active(context,'Knight').Model.PrimaryPart.Position-context.Island.Markers.KnightSlot.Position).Magnitude<.001)
@@ -97,18 +97,18 @@ assert((context.CurrentEnemy.Model.PrimaryPart.Position-context.Island.Markers.E
 assert(context.CurrentEnemy.Health==20 and connected()==3)
 manager.StartCombat(p1,context.Island);islandService.Claimed:Fire(p1,context.Island);manager.Start()
 assert(manager.GetContext(p1)==context and connected()==3 and alive('Model','Knight')==1)
-local panel=playerGui.HeroCavesProgression.Panel
+local panel=playerGui.IdleHeroesProgression.Panel
 assert(panel.CombatOwner.Text:find('Your heroes fight',1,true))
 validateContext(context)
 print('PASS: neutral Hub/no combat before claim, marker-driven personal wave1/Knight, no shared folders, active UI/DPS and duplicate-claim/start safety')
 ''')
 scenarios['single-waves-gold']=('',ui+r'''
 local context=claim(p1,2)
-local event=storage.HeroCavesGoldAwarded
+local event=storage.IdleHeroesGoldAwarded
 advance(.3);assert(context.CurrentEnemy.Health==20 and economy.GetGold(p1)==0)
 advance(.2);assert(context.CurrentEnemy==nil and economy.GetGold(p1)==5)
 assert(event.Responses[1][1]==p1 and event.Responses[1][2]==5)
-assert(playerGui.HeroCavesProgression.GoldGain.Text=='+5 Gold')
+assert(playerGui.IdleHeroesProgression.GoldGain.Text=='+5 Gold')
 local limit=clock+10
 while context.CurrentWave<3 do advance(.05);assert(clock<limit) end
 assert(economy.GetGold(p1)==11 and context.CurrentEnemy.Health==28)
@@ -203,7 +203,7 @@ assert(math.abs(sum-p1:GetAttribute('TotalDPS'))<1e-6)
 economy.SpendGold(p1,economy.GetGold(p1));economy.SpendGold(p2,economy.GetGold(p2))
 local boss=enemies.Spawn(a,5,true);enemies.Damage(a,boss.Health)
 assert(economy.GetGold(p1)==69 and economy.GetGold(p2)==0)
-local event=storage.HeroCavesGoldAwarded;assert(event.Responses[#event.Responses][1]==p1 and event.Responses[#event.Responses][2]==69)
+local event=storage.IdleHeroesGoldAwarded;assert(event.Responses[#event.Responses][1]==p1 and event.Responses[#event.Responses][2]==69)
 local p1Normal=progression.GetHeroDamage(p1,'Archer',false)
 assert(progression.GetHeroDamage(p1,'Archer',true)==math.floor(8*1.08^149*1.2*2+.5))
 assert(progression.ResetHero(p1,'Archer'))
@@ -214,7 +214,7 @@ print('PASS: local/global/cross/boss/speed/gold modifiers, DPS totals, exact com
 ''')
 scenarios['shop-before-after-claim']=('modules.GameConfig.StudioTesting.Enabled=true\nmodules.GameConfig.StudioTesting.StartingGold=2000\n',ui+r'''
 local p2=addPlayer(102,'Second');local b=claim(p2,4)
-local panel=playerGui.HeroCavesProgression.Panel
+local panel=playerGui.IdleHeroesProgression.Panel
 panel.HeroTabs.Archer.Activated:Fire();panel.LevelUp.Activated:Fire()
 assert(progression.OwnsHero(p1,'Archer') and not manager.GetContext(p1))
 assert(alive('Model','Archer')==0)
@@ -229,13 +229,13 @@ validateContext(a);validateContext(b)
 print('PASS: purchases in Hub wait for claim, preowned crew spawns, subsequent Mage buy spawns only on buyer island, unchanged local UI/level request and no duplicate loops')
 ''')
 scenarios['debug-local']=(allheroes+'modules.GameConfig.StudioTesting.StartingHeroLevels={Knight=50,Archer=150,Mage=150}\n',ui+r'''
-local remote=storage.HeroCavesCombatDebug.Control
-local panel=playerGui.HeroCavesProgression.CombatDebug
+local remote=storage.IdleHeroesCombatDebug.Control
+local panel=playerGui.IdleHeroesProgression.CombatDebug
 assert(panel.Context.Text:find('NO ACTIVE COMBAT AREA',1,true))
 panel.Pause.Activated:Fire();assert(#remote.Requests==0)
 remote.OnServerEvent:Fire(p1,'SetPaused',true);assert(not state.IsPaused(p1))
 local p2=addPlayer(102,'Second');local a=claim(p1,1);local b=claim(p2,4)
-local dataA,dataB=p1.HeroCavesCombatDebug,p2.HeroCavesCombatDebug
+local dataA,dataB=p1.IdleHeroesCombatDebug,p2.IdleHeroesCombatDebug
 assert(dataA~=dataB and dataA:GetAttribute('Active') and dataB:GetAttribute('Active'))
 advance(.2);assert(active(a,'Archer').Rig.Projectile and active(b,'Archer').Rig.Projectile)
 local hpB=b.CurrentEnemy.Health;local arrowB=active(b,'Archer').Rig.Projectile
@@ -273,7 +273,7 @@ removePlayer(p1)
 assert(not registry.GetStored(p1) and not manager.GetContext(p1) and not a.Active and oldFolder.destroyed)
 assert(not a.HeroConnection and not a.WaveConnection and #a.Heroes==0 and #a.HeroConnections==0 and not a.CurrentEnemy)
 assert(connected()==3 and manager.GetContext(p2)==b and b.CurrentEnemy==bEnemy)
-assert(not islandService.GetIslandOwner(1) and workspace.HeroCavesWorld.Islands.Island1.Markers.ClaimZone.OwnershipDisplay.Owner.Text=='UNCLAIMED')
+assert(not islandService.GetIslandOwner(1) and workspace.IdleHeroesWorld.Islands.Island1.Markers.ClaimZone.OwnershipDisplay.Owner.Text=='UNCLAIMED')
 for _,h in savedHeroes do assert(h.Model.destroyed and not h.Rig.Projectile) end
 local hitsB=#contextHits(b);advance(1);assert(#contextHits(b)>hitsB)
 local p3=addPlayer(103,'Third');local c=claim(p3,1)
@@ -294,12 +294,12 @@ local deadline=boss.Deadline;local previousHP=boss.Health
 character(p1);assert(manager.GetContext(p1)==context and context.CurrentEnemy==boss and boss.Deadline==deadline and boss.Health==previousHP)
 assert(enemies.ResetHealth(context) and boss.Deadline==deadline)
 state.SetPaused(p1,true);advance(1)
-assert(boss.Deadline==deadline and p1.HeroCavesCombatDebug:GetAttribute('BossTimeRemaining')<30)
+assert(boss.Deadline==deadline and p1.IdleHeroesCombatDebug:GetAttribute('BossTimeRemaining')<30)
 print('PASS: personal boss persists across avatar reset and HP reset; debug pause does not extend deadline and timer snapshots update by second')
 ''')
 scenarios['production-gates']=('isStudio=false\nmodules.GameConfig.StudioTesting.Enabled=true\nmodules.GameConfig.StudioTesting.StartingOwnedHeroes={Archer=true,Mage=true}\n',ui+r'''
-assert(not storage:FindFirstChild('HeroCavesCombatDebug') and not p1:FindFirstChild('HeroCavesCombatDebug'))
-assert(not playerGui.HeroCavesProgression:FindFirstChild('CombatDebug'))
+assert(not storage:FindFirstChild('IdleHeroesCombatDebug') and not p1:FindFirstChild('IdleHeroesCombatDebug'))
+assert(not playerGui.IdleHeroesProgression:FindFirstChild('CombatDebug'))
 assert(economy.GetGold(p1)==0 and progression.GetHeroLevel(p1,'Knight')==1 and not progression.OwnsHero(p1,'Archer'))
 local context=claim(p1,1)
 assert(not state.SetPaused(p1,true) and not state.SetHeroEnabled(p1,'Knight',false) and not progression.ResetHero(p1,'Knight'))
@@ -354,7 +354,7 @@ print('PASS: six simultaneous full crews/contexts, independent references under 
 """)
 scenarios['claim-race-contexts']=('',r"""
 local p2=addPlayer(102,'Second');character(p1);character(p2)
-local zone=workspace.HeroCavesWorld.Islands.Island1.Markers.ClaimZone
+local zone=workspace.IdleHeroesWorld.Islands.Island1.Markers.ClaimZone
 p1.Character:PivotTo(zone.CFrame);p2.Character:PivotTo(zone.CFrame)
 zone.Touched:Fire(p1.Character.HumanoidRootPart);zone.Touched:Fire(p2.Character.HumanoidRootPart)
 assert(manager.GetContext(p1) and not manager.GetContext(p2) and alive('Model','Knight')==1)
@@ -369,7 +369,7 @@ scenarios['exact-cap-double-reward']=('',ui+r"""
 local p2=addPlayer(102,'Second');local context=claim(p1,1);heroes.Stop(context)
 local death=context.CurrentEnemy
 assert(enemies.Damage(context,death.Health))
-local event=storage.HeroCavesGoldAwarded
+local event=storage.IdleHeroesGoldAwarded
 assert(economy.GetGold(p1)==5 and economy.GetGold(p2)==0 and event.Responses[#event.Responses][2]==5)
 enemies.Defeated:Fire(death);assert(economy.GetGold(p1)==5 and #event.Responses==1)
 economy.AddGold(p1,modules.GameConfig.Economy.MaxGold-7)
@@ -396,16 +396,16 @@ print('PASS: long frames issue at most one impact per hero per context, no catch
 """)
 scenarios['studio-disabled']=('',ui+r"""
 assert(isStudio and not modules.GameConfig.StudioTesting.Enabled)
-assert(not storage:FindFirstChild('HeroCavesCombatDebug') and not p1:FindFirstChild('HeroCavesCombatDebug'))
+assert(not storage:FindFirstChild('IdleHeroesCombatDebug') and not p1:FindFirstChild('IdleHeroesCombatDebug'))
 local context=claim(p1,1)
 assert(not state.SetPaused(p1,true) and not progression.ResetHero(p1,'Knight'))
 advance(.5);assert(economy.GetGold(p1)==5)
 print('PASS: Studio without testing flag has no debug tools/reset, normal personal combat unaffected')
 """)
 
-scenarios['global-floor-removal']=("local function oldFloor(name,size,position,parent)\n local obj=Instance.new('Part');obj.Name=name;obj.Size=size;obj.CFrame=CFrame.new(position)\n obj.Anchored=true;obj.CanCollide=true;obj.Transparency=0;obj.Parent=parent or workspace;return obj\nend\n\nlocal base=oldFloor('Baseplate',Vector3.new(512,4,512),Vector3.new(0,-2,0))\nlocal nested=Instance.new('Model');nested.Name='LegacyMap';nested.Parent=workspace\nlocal wide=oldFloor('OldLargeSlab',Vector3.new(300,5,300),Vector3.new(0,-12,0),nested)\nlocal named=oldFloor('Floor',Vector3.new(100,4,100),Vector3.new(0,-2,0))\nlocal small=oldFloor('SmallProp',Vector3.new(4,4,4),Vector3.new(20,1,0))\nlocal wall=oldFloor('Wall',Vector3.new(200,100,200),Vector3.new(0,50,0))\nlocal far=oldFloor('UnrelatedFloor',Vector3.new(512,4,512),Vector3.new(5000,-2,0))\n","\nassert(base.destroyed and wide.destroyed and named.destroyed)\nassert(not small.destroyed and not wall.destroyed and not far.destroyed)\nlocal world=workspace.HeroCavesWorld\nassert(world:GetAttribute('RemovedGlobalFloorCount')==3)\nassert(#world.Islands:GetChildren()==6 and #world.Bridges:GetChildren()==6)\nfor _,obj in world:GetDescendants() do\n if obj:IsA('BasePart') then\n  assert(obj.Size.X<128 and obj.Size.Z<128,'no generated global slab')\n end\nend\nassert(not workspace:FindFirstChild('Baseplate'))\nassert(islandService.RemoveGlobalFloors()==0,'generated Hub/islands/bridges must not be removed')\nfor i=1,6 do\n local b=world.Bridges['Bridge'..i];local p=world.Islands['Island'..i].Platform\n assert(b.Transparency==0 and b.CanCollide and b.CastShadow)\n assert(p.Transparency==0 and p.CanCollide and p.Size.Y==4)\nend\nassert(world.Hub.Platform.Transparency==0 and world.Hub.Platform.CanCollide and world.Hub.Platform.Size.Y==4)\nprint('PASS: removes old Baseplate, named floor and nested broad slab; no generated global floor, preserves props/vertical/far geometry, seven solid platforms and six opaque colliding bridges')\n")
+scenarios['global-floor-removal']=("local function oldFloor(name,size,position,parent)\n local obj=Instance.new('Part');obj.Name=name;obj.Size=size;obj.CFrame=CFrame.new(position)\n obj.Anchored=true;obj.CanCollide=true;obj.Transparency=0;obj.Parent=parent or workspace;return obj\nend\n\nlocal base=oldFloor('Baseplate',Vector3.new(512,4,512),Vector3.new(0,-2,0))\nlocal nested=Instance.new('Model');nested.Name='LegacyMap';nested.Parent=workspace\nlocal wide=oldFloor('OldLargeSlab',Vector3.new(300,5,300),Vector3.new(0,-12,0),nested)\nlocal named=oldFloor('Floor',Vector3.new(100,4,100),Vector3.new(0,-2,0))\nlocal small=oldFloor('SmallProp',Vector3.new(4,4,4),Vector3.new(20,1,0))\nlocal wall=oldFloor('Wall',Vector3.new(200,100,200),Vector3.new(0,50,0))\nlocal far=oldFloor('UnrelatedFloor',Vector3.new(512,4,512),Vector3.new(5000,-2,0))\n","\nassert(base.destroyed and wide.destroyed and named.destroyed)\nassert(not small.destroyed and not wall.destroyed and not far.destroyed)\nlocal world=workspace.IdleHeroesWorld\nassert(world:GetAttribute('RemovedGlobalFloorCount')==3)\nassert(#world.Islands:GetChildren()==6 and #world.Bridges:GetChildren()==6)\nfor _,obj in world:GetDescendants() do\n if obj:IsA('BasePart') then\n  assert(obj.Size.X<128 and obj.Size.Z<128,'no generated global slab')\n end\nend\nassert(not workspace:FindFirstChild('Baseplate'))\nassert(islandService.RemoveGlobalFloors()==0,'generated Hub/islands/bridges must not be removed')\nfor i=1,6 do\n local b=world.Bridges['Bridge'..i];local p=world.Islands['Island'..i].Platform\n assert(b.Transparency==0 and b.CanCollide and b.CastShadow)\n assert(p.Transparency==0 and p.CanCollide and p.Size.Y==4)\nend\nassert(world.Hub.Platform.Transparency==0 and world.Hub.Platform.CanCollide and world.Hub.Platform.Size.Y==4)\nprint('PASS: removes old Baseplate, named floor and nested broad slab; no generated global floor, preserves props/vertical/far geometry, seven solid platforms and six opaque colliding bridges')\n")
 
-scenarios['hidden-marker-textures']=('',"\nlocal world=workspace.HeroCavesWorld\nlocal function hidden(obj)\n assert(obj.Transparency==1 and not obj.CastShadow and not obj.CanCollide)\n for _,d in obj:GetDescendants() do if d:IsA('Decal') or d:IsA('Texture') then assert(d.Transparency==1) end end\nend\nhidden(world.Hub.PlayerSpawn)\nassert(world.Hub.PlayerSpawn.SpawnTexture.Transparency==1)\nfor i=1,6 do\n local island=world.Islands['Island'..i]\n for _,m in island.Markers:GetChildren() do hidden(m) end\n assert(island.Markers.ClaimZone.CanTouch and island.Markers.ClaimZone.OwnershipDisplay.Owner.Text=='UNCLAIMED')\n assert(island.Markers.PlayerSpawn.Enabled and island.Markers.PlayerSpawn.SpawnTexture.Transparency==1)\nend\ncharacter(p1);claim(p1,6);assert(islandService.GetIslandOwner(6)==p1)\nlocal c,r=character(p1)\nassert((r.Position-(world.Islands.Island6.Markers.PlayerSpawn.Position+Vector3.new(0,3,0))).Magnitude<.001)\nprint('PASS: invisible technical parts, no spawn decals/marker textures, visible ownership sign, touch claiming and reference spawn remain functional')\n")
+scenarios['hidden-marker-textures']=('',"\nlocal world=workspace.IdleHeroesWorld\nlocal function hidden(obj)\n assert(obj.Transparency==1 and not obj.CastShadow and not obj.CanCollide)\n for _,d in obj:GetDescendants() do if d:IsA('Decal') or d:IsA('Texture') then assert(d.Transparency==1) end end\nend\nhidden(world.Hub.PlayerSpawn)\nassert(world.Hub.PlayerSpawn.SpawnTexture.Transparency==1)\nfor i=1,6 do\n local island=world.Islands['Island'..i]\n for _,m in island.Markers:GetChildren() do hidden(m) end\n assert(island.Markers.ClaimZone.CanTouch and island.Markers.ClaimZone.OwnershipDisplay.Owner.Text=='UNCLAIMED')\n assert(island.Markers.PlayerSpawn.Enabled and island.Markers.PlayerSpawn.SpawnTexture.Transparency==1)\nend\ncharacter(p1);claim(p1,6);assert(islandService.GetIslandOwner(6)==p1)\nlocal c,r=character(p1)\nassert((r.Position-(world.Islands.Island6.Markers.PlayerSpawn.Position+Vector3.new(0,3,0))).Magnitude<.001)\nprint('PASS: invisible technical parts, no spawn decals/marker textures, visible ownership sign, touch claiming and reference spawn remain functional')\n")
 
 scenarios['deferred-lifecycle']=('',r"""
 local a=claim(p1,1);local p2=addPlayer(102,'Second');local b=claim(p2,4)
@@ -445,10 +445,10 @@ validateContext(b)
 print('PASS: deferred claim/release/reclaim/departure callbacks; inactive ownership blocks stale hits before cleanup; other context preserved')
 """)
 
-test_directory=tempfile.mkdtemp(prefix="hero-caves-phase6b-")
+test_directory=tempfile.mkdtemp(prefix="idle-heroes-phase6b-")
 failed=[]
 for name,(before,test) in scenarios.items():
- path=Path(test_directory)/('hero-caves-phase6b-'+name+'.luau');path.write_text(common+before+'\n'+start+test)
+ path=Path(test_directory)/('idle-heroes-phase6b-'+name+'.luau');path.write_text(common+before+'\n'+start+test)
  proc=subprocess.run([os.environ.get('LUAU_BIN','luau'),str(path)],capture_output=True,text=True)
  print(name,proc.returncode,proc.stdout.strip(),proc.stderr.strip())
  if proc.returncode:failed.append(name)

@@ -1,7 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local gui = Instance.new("ScreenGui")
-gui.Name = "HeroCavesIslandFeedback"
+gui.Name = "IdleHeroesIslandFeedback"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 15
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -21,7 +21,7 @@ label.Visible = false
 label.Parent = gui
 gui.Parent = playerGui
 local revision = 0
-ReplicatedStorage:WaitForChild("HeroCavesIslandFeedback").OnClientEvent:Connect(function(message)
+ReplicatedStorage:WaitForChild("IdleHeroesIslandFeedback").OnClientEvent:Connect(function(message)
 	if type(message) ~= "string" then return end
 	revision += 1
 	local current = revision

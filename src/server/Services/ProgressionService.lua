@@ -328,7 +328,7 @@ function ProgressionService.Start()
 	end
 
 	local remotes = Instance.new("Folder")
-	remotes.Name = "HeroCavesRemotes"
+	remotes.Name = "IdleHeroesRemotes"
 	local function remote(name, argumentCount, purchase)
 		local event = Instance.new("RemoteEvent")
 		event.Name = name

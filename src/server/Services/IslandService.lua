@@ -254,7 +254,7 @@ function IslandService.Start()
 	part("Part", "Platform", Config.HubSize, hubFrame, hub, Color3.fromRGB(90, 110, 145))
 	local surface = Config.HubPosition + Vector3.new(0, Config.HubSize.Y / 2, 0)
 	hubSpawn = spawnPoint("PlayerSpawn", CFrame.new(surface + Config.HubSpawnOffset), hub)
-	sign(hubSpawn, "HERO CAVES · HUB")
+	sign(hubSpawn, "IDLE HEROES · HUB")
 	local folder = Instance.new("Folder")
 	folder.Name = "Islands"
 	folder.Parent = world
@@ -262,7 +262,7 @@ function IslandService.Start()
 	bridges.Name = "Bridges"
 	bridges.Parent = world
 	feedback = Instance.new("RemoteEvent")
-	feedback.Name = "HeroCavesIslandFeedback"
+	feedback.Name = "IdleHeroesIslandFeedback"
 	feedback.Parent = ReplicatedStorage
 	for id = 1, Config.IslandCount do
 		local angle = math.rad(Config.StartAngleDegrees + (id - 1) * (Config.AngularSpacingDegrees or 360 / Config.IslandCount))

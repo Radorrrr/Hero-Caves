@@ -4,7 +4,7 @@ local NumberFormatter = require(ReplicatedStorage.Shared.NumberFormatter)
 
 local GoldPopup = {}
 function GoldPopup.Start(gui)
-	local event = ReplicatedStorage:WaitForChild("HeroCavesGoldAwarded")
+	local event = ReplicatedStorage:WaitForChild("IdleHeroesGoldAwarded")
 	local popups = {}
 	event.OnClientEvent:Connect(function(amount)
 		if type(amount) ~= "number" or amount <= 0 or amount ~= amount or amount == math.huge then return end

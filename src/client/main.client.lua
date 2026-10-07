@@ -13,16 +13,16 @@ for _, id in HeroConfig.HeroOrder do
 	heroSnapshots[id] = {Data = data, Upgrades = data:WaitForChild("Upgrades"), Quotes = data:WaitForChild("PurchaseModes")}
 end
 local heroId = HeroConfig.StartingHeroId
-local remotes = ReplicatedStorage:WaitForChild("HeroCavesRemotes")
+local remotes = ReplicatedStorage:WaitForChild("IdleHeroesRemotes")
 local buyLevel = remotes:WaitForChild("BuyHeroLevels")
 local purchaseModes = {"x1", "x10", "x25", "x100", "MAX", "NEXT"}
 local modeIndex = 1
 local buyHero = remotes:WaitForChild("BuyHero")
 local buyUpgrade = remotes:WaitForChild("BuyUpgrade")
 
-if playerGui:FindFirstChild("HeroCavesProgression") then return end
+if playerGui:FindFirstChild("IdleHeroesProgression") then return end
 local gui = Instance.new("ScreenGui")
-gui.Name = "HeroCavesProgression"
+gui.Name = "IdleHeroesProgression"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 10
 local panel = Instance.new("Frame")
