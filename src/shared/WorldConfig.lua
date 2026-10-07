@@ -25,4 +25,10 @@ return {
 		MageSlot = Vector3.new(-5, 2.4, -4),
 	},
 	ClaimFeedbackCooldown = 1,
+	-- Remove old Studio/global floors overlapping the floating world's footprint.
+	GlobalFloorNames = {baseplate = true, floor = true, ground = true, globalfloor = true, global_floor = true},
+	GlobalFloorMinimumSize = Vector3.new(128, 0, 128),
+	GlobalFloorTopTolerance = 1,
+	VoidDepth = 60,
+	VoidCheckInterval = 0.2,
 }

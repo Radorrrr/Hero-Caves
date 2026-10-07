@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.WorldConfig)
 
@@ -19,36 +20,68 @@ local function part(class, name, size, frame, parent, color)
 	object.CFrame = frame
 	object.Anchored = true
 	object.CanCollide = true
+	object.Transparency = 0
+	object.Reflectance = 0
+	object.CastShadow = true
 	object.Color = color or Color3.fromRGB(80, 105, 100)
 	object.Material = Enum.Material.SmoothPlastic
 	object.Parent = parent
 	return object
 end
 
-local function marker(name, frame, parent)
-	local object = part("Part", name, Vector3.new(1, 1, 1), frame, parent)
+local function hideReference(object)
 	object.Transparency = 1
 	object.CastShadow = false
 	object.CanCollide = false
 	object.CanTouch = false
 	object.CanQuery = false
+	-- Part transparency alone does not hide independently rendered textures.
+	for _, child in object:GetDescendants() do
+		if child:IsA("Decal") or child:IsA("Texture") then child.Transparency = 1 end
+	end
+end
+
+local function marker(name, frame, parent)
+	local object = part("Part", name, Vector3.new(1, 1, 1), frame, parent)
+	hideReference(object)
 	return object
 end
 
 local function spawnPoint(name, frame, parent)
-	local spawn = part("SpawnLocation", name, Vector3.new(8, 1, 8), frame, parent,
-		Color3.fromRGB(90, 165, 195))
-	-- Position reference only: the platform supplies the walkable surface.
-	spawn.Transparency = 1
-	spawn.CastShadow = false
-	spawn.CanCollide = false
-	spawn.CanTouch = false
-	spawn.CanQuery = false
+	local spawn = part("SpawnLocation", name, Vector3.new(8, 1, 8), frame, parent)
+	hideReference(spawn)
 	spawn.Neutral = true
 	spawn.AllowTeamChangeOnTouch = false
 	spawn.Duration = 0
 	spawn.Enabled = true
 	return spawn
+end
+
+-- Runtime removal includes pre-existing Parts inside Models, not only Workspace.Baseplate.
+function IslandService.RemoveGlobalFloors()
+	local surfaceY = Config.HubPosition.Y + Config.HubSize.Y / 2
+	local footprint = Config.IslandRadius + math.max(Config.IslandSize.X, Config.IslandSize.Z) / 2
+	local removed = 0
+	for _, object in workspace:GetDescendants() do
+		if not object:IsA("BasePart") or not object.Anchored then continue end
+		if world and object:IsDescendantOf(world) then continue end
+		local size, position = object.Size, object.Position
+		local name = string.lower(object.Name)
+		local namedFloor = Config.GlobalFloorNames[name] and (name == "baseplate"
+			or (size.X >= Config.HubSize.X and size.Z >= Config.HubSize.Z))
+		local broadFloor = size.X >= Config.GlobalFloorMinimumSize.X and size.Z >= Config.GlobalFloorMinimumSize.Z
+		if not namedFloor and not broadFloor then continue end
+		local horizontal = math.abs(object.CFrame.UpVector.Y) > 0.99 and size.Y <= math.min(size.X, size.Z) / 4
+		local underneath = position.Y + size.Y / 2 <= surfaceY + Config.GlobalFloorTopTolerance
+		local inWorld = math.abs(position.X - Config.HubPosition.X) <= footprint + size.X / 2
+			and math.abs(position.Z - Config.HubPosition.Z) <= footprint + size.Z / 2
+		if (namedFloor or broadFloor) and horizontal and underneath and inWorld then
+			print("[IslandService] Removing global floor: " .. object:GetFullName())
+			object:Destroy()
+			removed += 1
+		end
+	end
+	return removed
 end
 
 local function sign(anchor, text)
@@ -166,6 +199,14 @@ local function release(player)
 	player.RespawnLocation = nil
 end
 
+local function returnToSpawn(player, character, root)
+	local spawn = IslandService.GetSpawnLocation(player)
+	if not spawn then return end
+	character:PivotTo(spawn.CFrame * CFrame.new(0, 3, 0))
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+end
+
 local function registerPlayer(player)
 	if playerConnections[player] then return end
 	player:SetAttribute("IslandId", nil)
@@ -175,8 +216,7 @@ local function registerPlayer(player)
 		local root = character:WaitForChild("HumanoidRootPart", 10)
 		if not root or not started or generation ~= currentGeneration
 			or player.Parent ~= Players or player.Character ~= character then return end
-		local spawn = IslandService.GetSpawnLocation(player)
-		if spawn then character:PivotTo(spawn.CFrame * CFrame.new(0, 3, 0)) end
+		returnToSpawn(player, character, root)
 	end
 	playerConnections[player] = player.CharacterAdded:Connect(positionCharacter)
 	if player.Character then task.spawn(positionCharacter, player.Character) end
@@ -188,10 +228,13 @@ function IslandService.Start()
 	assert(Config.IslandCount >= 1 and Config.IslandCount % 1 == 0, "Invalid island count")
 	assert(Config.IslandRadius > Config.HubSize.X / 2 + Config.IslandSize.Z / 2, "Islands must be outside Hub")
 	assert(not workspace:FindFirstChild(Config.FolderName), "World folder already exists")
+	assert(Config.VoidDepth > 0 and Config.VoidCheckInterval > 0, "Invalid void recovery settings")
+	local removedFloors = IslandService.RemoveGlobalFloors()
 	generation += 1
 	world = Instance.new("Folder")
 	world.Name = Config.FolderName
 	world.Parent = workspace
+	world:SetAttribute("RemovedGlobalFloorCount", removedFloors)
 	local hub = Instance.new("Model")
 	hub.Name = "Hub"
 	hub.Parent = world
@@ -224,12 +267,8 @@ function IslandService.Start()
 		markers.Parent = model
 		local zone = part("Part", "ClaimZone", Config.ClaimZoneSize, origin * CFrame.new(Config.ClaimZoneOffset), markers,
 			Color3.fromRGB(240, 200, 90))
-		zone.CanCollide = false
-		zone.CanTouch = true
-		-- Invisible detection volume; the ownership BillboardGui remains visible.
-		zone.Transparency = 1
-		zone.CastShadow = false
-		zone.CanQuery = false
+		hideReference(zone)
+		zone.CanTouch = true -- Functional touch volume; no technical geometry is rendered.
 		spawnPoint("PlayerSpawn", origin * CFrame.new(Config.PlayerSpawnOffset), markers)
 		marker("CavePosition", origin * CFrame.new(Config.CaveOffset), markers)
 		marker("EnemyPosition", origin * CFrame.new(Config.EnemyOffset), markers)
@@ -253,6 +292,22 @@ function IslandService.Start()
 	table.insert(connections, Players.PlayerAdded:Connect(registerPlayer))
 	table.insert(connections, Players.PlayerRemoving:Connect(release))
 	for _, player in Players:GetPlayers() do registerPlayer(player) end
+	local nextVoidCheck = 0
+	local voidY = surface.Y - Config.VoidDepth
+	table.insert(connections, RunService.Heartbeat:Connect(function()
+		local now = time()
+		if now < nextVoidCheck then return end
+		nextVoidCheck = now + Config.VoidCheckInterval
+		for player in playerConnections do
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if player.Parent == Players and root and humanoid and humanoid.Health > 0
+				and root.Position.Y < voidY then
+				returnToSpawn(player, character, root)
+			end
+		end
+	end))
 end
 
 function IslandService.Stop()
