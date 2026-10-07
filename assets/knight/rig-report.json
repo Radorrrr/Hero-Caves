@@ -1,0 +1,47 @@
+{
+  "triangles": 4072,
+  "rig_bones": 17,
+  "rigid_components": 95,
+  "body_regions": {
+    "Head": 36,
+    "Hand.R": 4,
+    "Hand.L": 3,
+    "Forearm.L": 3,
+    "Foot.L": 5,
+    "Torso": 2,
+    "UpperArm.L": 4,
+    "Foot.R": 5,
+    "Sword": 4,
+    "Thigh.R": 3,
+    "UpperArm.R": 5,
+    "Forearm.R": 6,
+    "Shin.R": 4,
+    "Shin.L": 4,
+    "Pelvis": 4,
+    "Thigh.L": 3
+  },
+  "actions": [
+    {
+      "name": "Knight_Idle",
+      "range": [
+        1.0,
+        61.0
+      ]
+    },
+    {
+      "name": "Knight_SwordAttack",
+      "range": [
+        1.0,
+        31.0
+      ]
+    },
+    {
+      "name": "Knight_Walk",
+      "range": [
+        1.0,
+        31.0
+      ]
+    }
+  ],
+  "fps": 30
+}
