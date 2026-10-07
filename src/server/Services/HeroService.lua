@@ -172,8 +172,8 @@ function HeroService.Start(context)
 			if not CombatDebugState.IsHeroEnabled(player, hero.Id) then idle(hero) end
 		end
 	end))
-	table.insert(context.HeroConnections, EnemyService.Changed:Connect(function(changedContext)
-		if changedContext ~= context then return end
+	table.insert(context.HeroConnections, EnemyService.Changed:Connect(function(player, contextId)
+		if player ~= context.Player or contextId ~= context.Id then return end
 		for _, hero in context.Heroes do
 			if hero.Target and hero.Target ~= context.CurrentEnemy then idle(hero) end
 		end

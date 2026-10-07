@@ -183,7 +183,11 @@ function IslandService.TryClaim(player, islandId)
 	island.Label.Text = player.DisplayName .. "'s Cave"
 	island.Markers.ClaimZone.Color = Color3.fromRGB(80, 175, 105)
 	island.Cave = cave(island)
-	claimedEvent:Fire(player, island)
+	-- BindableEvents copy Lua tables. Send the stable runtime Model, not our ownership record.
+	if RunService:IsStudio() then
+		print(string.format("[CombatContext] Claim confirmed: %s -> %s; notifying combat", player.Name, island.Model.Name))
+	end
+	claimedEvent:Fire(player, island.Model)
 	showFeedback(player, "Island " .. island.Id .. " claimed. This is your cave.")
 	return true, "Claimed"
 end
@@ -191,7 +195,7 @@ end
 function IslandService.ReleaseIsland(player)
 	local island = playerIslands[player]
 	if island then
-		releasingEvent:Fire(player, island)
+		releasingEvent:Fire(player, island.Model)
 		island.Owner = nil
 		playerIslands[player] = nil
 		island.Model:SetAttribute("OwnerUserId", 0)

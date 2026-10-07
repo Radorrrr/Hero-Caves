@@ -67,7 +67,10 @@ function CombatDebugService.Start()
 		if snapshots[player] then snapshots[player]:Destroy(); snapshots[player] = nil end
 		lastRequest[player] = nil
 	end)
-	EnemyService.Changed:Connect(function(context) if context then publish(context.Player) end end)
+	EnemyService.Changed:Connect(function(player, contextId)
+		local context = Contexts.Get(player)
+		if context and context.Id == contextId then publish(player) end
+	end)
 	Contexts.Changed:Connect(publish)
 	State.Changed:Connect(publish)
 	remote.OnServerEvent:Connect(function(player, ...)

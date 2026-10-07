@@ -95,7 +95,7 @@ assert(active(context,'Knight').Model:GetAttribute('OwnerUserId')==101)
 assert((active(context,'Knight').Model.PrimaryPart.Position-context.Island.Markers.KnightSlot.Position).Magnitude<.001)
 assert((context.CurrentEnemy.Model.PrimaryPart.Position-context.Island.Markers.EnemyPosition.Position).Magnitude<.001)
 assert(context.CurrentEnemy.Health==20 and connected()==3)
-manager.StartCombat(p1,context.Island);islandService.Claimed:Fire(p1,context.Island);manager.Start()
+manager.StartCombat(p1,context.Island);islandService.Claimed:Fire(p1,context.Island.Model);manager.Start()
 assert(manager.GetContext(p1)==context and connected()==3 and alive('Model','Knight')==1)
 local panel=playerGui.IdleHeroSimulatorProgression.Panel
 assert(panel.CombatOwner.Text:find('Your heroes fight',1,true))
@@ -361,7 +361,7 @@ assert(manager.GetContext(p1) and not manager.GetContext(p2) and alive('Model','
 local context=manager.GetContext(p1)
 assert(manager.StartCombat(p2,context.Island)==nil)
 assert(connected()==3)
-for i=1,10 do islandService.Claimed:Fire(p1,context.Island) end
+for i=1,10 do islandService.Claimed:Fire(p1,context.Island.Model) end
 assert(connected()==3 and manager.GetContext(p1)==context and alive('Model','Knight')==1)
 print('PASS: competing claim creates one context only, no forged island-owner startup and duplicate claim notifications idempotent')
 """)
@@ -371,7 +371,7 @@ local death=context.CurrentEnemy
 assert(enemies.Damage(context,death.Health))
 local event=storage.IdleHeroSimulatorGoldAwarded
 assert(economy.GetGold(p1)==5 and economy.GetGold(p2)==0 and event.Responses[#event.Responses][2]==5)
-enemies.Defeated:Fire(death);assert(economy.GetGold(p1)==5 and #event.Responses==1)
+enemies.Defeated:Fire(p1,context.Id,death.Sequence);assert(economy.GetGold(p1)==5 and #event.Responses==1)
 economy.AddGold(p1,modules.GameConfig.Economy.MaxGold-7)
 local boss=enemies.Spawn(context,5,true);assert(enemies.Damage(context,boss.Health))
 assert(economy.GetGold(p1)==modules.GameConfig.Economy.MaxGold and economy.GetGold(p2)==0)
@@ -443,6 +443,83 @@ players.PlayerRemoving:Fire(p1);p1.Parent=nil;advance(.1);flush()
 assert(not registry.GetStored(p1) and manager.GetContext(p2)==b)
 validateContext(b)
 print('PASS: deferred claim/release/reclaim/departure callbacks; inactive ownership blocks stale hits before cleanup; other context preserved')
+""")
+
+scenarios['bindable-claim-runtime-integration']=('',ui+r"""
+-- Demonstrate Roblox argument semantics before driving the real Touched path.
+local probe=Instance.new('BindableEvent')
+local original={Model=workspace.IdleHeroSimulatorWorld.Islands.Island1,Player=p1,Nested={Value=7}}
+local received
+probe.Event:Connect(function(value) received=value end)
+probe:Fire(original)
+assert(received~=original and received.Nested~=original.Nested)
+assert(received.Model==original.Model and received.Player==p1)
+local payloads={}
+islandService.Claimed:Connect(function(player,model)
+ assert(model.ClassName=='Model','claim event must not send a copied ownership table')
+ table.insert(payloads,{Player=player,Model=model})
+end)
+local a=claim(p1,1)
+assert(a and a.Island==islandService.GetIsland(p1) and a.Island.Model==original.Model)
+assert(a.CurrentWave==1 and a.CurrentEnemy and active(a,'Knight'))
+assert(p1:GetAttribute('HasCombatArea') and math.abs(p1:GetAttribute('TotalDPS')-20/1.3)<1e-8)
+assert(playerGui.IdleHeroSimulatorProgression.Panel.CombatOwner.Text:find('Your heroes fight',1,true))
+local p2=addPlayer(102,'Second');assert(not manager.GetContext(p2) and p2:GetAttribute('TotalDPS')==0)
+local b=claim(p2,2)
+assert(b and b.Island==islandService.GetIsland(p2) and b~=a and b.CurrentWave==1)
+assert(#payloads==2 and payloads[1].Player==p1 and payloads[2].Player==p2)
+validateContext(a);validateContext(b)
+waitForHits(a,'Knight',1);waitForHits(b,'Knight',1)
+assert(economy.GetGold(p1)==5 and economy.GetGold(p2)==5)
+print('PASS: Roblox table copying demonstrated; actual Touched -> BindableEvent -> authoritative lookup -> context/wave/enemy/Knight -> active client UI/DPS for two players')
+""")
+scenarios['stable-enemy-event-handles']=(allheroes+'modules.GameConfig.StudioTesting.StartingGold=0\n',r"""
+local a=claim(p1,1);local p2=addPlayer(102,'Second');local b=claim(p2,2)
+local notices,deaths={},{}
+enemies.Changed:Connect(function(player,id)
+ assert(player.ClassName=='Player' and type(id)=='string');table.insert(notices,{player,id})
+end)
+enemies.Defeated:Connect(function(player,id,sequence)
+ assert(player.ClassName=='Player' and type(id)=='string' and type(sequence)=='number')
+ table.insert(deaths,{player,id,sequence})
+end)
+local oldEnemy=a.CurrentEnemy
+advance(.35);assert(active(a,'Archer').Rig.Projectile)
+local replacement=enemies.Spawn(a,2,false)
+assert(not active(a,'Archer').Rig.Projectile and b.CurrentEnemy~=replacement)
+assert(not originalDamage(active(a,'Knight'),oldEnemy))
+heroes.Stop(a);enemies.Damage(a,replacement.Health)
+assert(#deaths==1 and deaths[1][1]==p1 and economy.GetGold(p1)==6 and economy.GetGold(p2)==0)
+enemies.Defeated:Fire(p1,a.Id,replacement.Sequence)
+enemies.Defeated:Fire(p2,b.Id,12345)
+assert(economy.GetGold(p1)==6 and economy.GetGold(p2)==0 and next(a.PendingRewards)==nil)
+local oldId=a.Id;islandService.ReleaseIsland(p1);local fresh=claim(p1,1)
+enemies.Defeated:Fire(p1,oldId,replacement.Sequence)
+assert(economy.GetGold(p1)==6 and fresh.Id~=oldId and manager.GetContext(p2)==b)
+print('PASS: enemy notifications use Player/IDs; replacement cancels own projectiles; private one-shot reward claims reject duplicate, unknown and released generations')
+""")
+scenarios['startup-reconciliation-and-diagnostics']=('',r"""
+local context=claim(p1,1);local island=context.Island
+manager.Stop();assert(not manager.GetContext(p1) and connected()==1)
+local marker=island.Markers.KnightSlot;local parent=marker.Parent;marker.Parent=nil
+local warningCount=#warnings
+assert(not manager.StartCombat(p1,island) and #warnings==warningCount+1)
+assert(warnings[#warnings]:find('missing/invalid runtime marker KnightSlot',1,true))
+assert(not p1:GetAttribute('HasCombatArea') and p1:GetAttribute('TotalDPS')==0)
+marker.Parent=parent
+local startWave=waves.Start
+waves.Start=function() error('injected startup failure') end
+assert(not manager.StartCombat(p1,island))
+assert(warnings[#warnings]:find('injected startup failure',1,true))
+assert(not registry.GetStored(p1) and not island.Model:FindFirstChild('Combat'))
+assert(not p1:GetAttribute('HasCombatArea') and connected()==1)
+waves.Start=startWave
+manager.Start();local fresh=manager.GetContext(p1)
+assert(fresh and fresh.CurrentWave==1 and fresh.Island==island and #fresh.Heroes==1)
+manager.Start();assert(connected()==3 and alive('Model','Knight')==1)
+local count=#warnings;isStudio=false
+assert(not manager.StartCombat(p1,nil) and #warnings==count,'diagnostics must be Studio-only')
+print('PASS: startup marker validation/error diagnostics, rollback clears active state, existing ownership reconciliation and idempotent listener initialization; production diagnostics silent')
 """)
 
 test_directory=tempfile.mkdtemp(prefix="idle-hero-simulator-phase6b-")

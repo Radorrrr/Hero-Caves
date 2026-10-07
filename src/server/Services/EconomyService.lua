@@ -88,15 +88,14 @@ function EconomyService.Start()
 	for _, player in Players:GetPlayers() do
 		initializePlayer(player)
 	end
-	EnemyService.Defeated:Connect(function(enemy)
-		if enemy.RewardGranted then
-			return
-		end
-		enemy.RewardGranted = true
-		local context = enemy.Context
-		if Contexts.IsActive(context) then
-			EconomyService.EarnGold(context.Player, enemy.GoldReward)
-		end
+	EnemyService.Defeated:Connect(function(player, contextId, enemySequence)
+		local context = Contexts.Get(player)
+		if not context or context.Id ~= contextId then return end
+		local reward = context.PendingRewards[enemySequence]
+		if reward == nil then return end
+		-- Consume once before awarding: duplicates and old generations cannot pay out.
+		context.PendingRewards[enemySequence] = nil
+		EconomyService.EarnGold(player, reward)
 	end)
 end
 

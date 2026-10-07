@@ -35,7 +35,7 @@ function EnemyService.Remove(context)
 	if context and context.CurrentEnemy then
 		context.CurrentEnemy.Model:Destroy()
 		context.CurrentEnemy = nil
-		changedEvent:Fire(context)
+		changedEvent:Fire(context.Player, context.Id)
 	end
 end
 
@@ -110,6 +110,7 @@ function EnemyService.Spawn(context, wave, isBoss)
 
 	local enemy = {
 		Context = context,
+		Sequence = context.EnemySequence,
 		Model = model,
 		Name = definition.Name,
 		Health = maxHealth,
@@ -125,7 +126,7 @@ function EnemyService.Spawn(context, wave, isBoss)
 	context.CurrentEnemy = enemy
 	updateDisplay(enemy)
 	model.Parent = context.EnemyFolder
-	changedEvent:Fire(context)
+	changedEvent:Fire(context.Player, context.Id)
 	if GameConfig.DebugLogging then
 		print(string.format("[EnemyService] Spawned %s with %d HP", definition.Name, maxHealth))
 	end
@@ -138,7 +139,7 @@ function EnemyService.UpdateDisplay(context)
 		local remaining = math.max(0, math.ceil(enemy.Deadline - time()))
 		if enemy.Model:GetAttribute("TimeRemaining") ~= remaining then
 			updateDisplay(enemy)
-			changedEvent:Fire(context) -- Timer snapshot only when its displayed second changes.
+			changedEvent:Fire(context.Player, context.Id) -- Timer snapshot only when its displayed second changes.
 		end
 	end
 end
@@ -155,7 +156,7 @@ function EnemyService.Damage(context, amount, sourceName)
 	end
 	enemy.Health = math.max(0, enemy.Health - math.floor(amount))
 	updateDisplay(enemy)
-	changedEvent:Fire(context)
+	changedEvent:Fire(context.Player, context.Id)
 	if GameConfig.DebugLogging then
 		print(string.format("[CombatService] %s dealt %d damage", sourceName or "Server", math.floor(amount)))
 	end
@@ -165,7 +166,9 @@ function EnemyService.Damage(context, amount, sourceName)
 		end
 		EnemyService.Remove(context)
 		-- Removal for replacement/timeout never fires this death-only signal.
-		defeatedEvent:Fire(enemy)
+		-- Keep authoritative reward data in the private context; events carry only stable handles.
+		context.PendingRewards[enemy.Sequence] = enemy.GoldReward
+		defeatedEvent:Fire(context.Player, context.Id, enemy.Sequence)
 	end
 	return true
 end
@@ -176,7 +179,7 @@ function EnemyService.ResetHealth(context)
 	if not enemy or enemy.Health <= 0 or (enemy.IsBoss and time() >= enemy.Deadline) then return false end
 	enemy.Health = enemy.MaxHealth
 	updateDisplay(enemy)
-	changedEvent:Fire(context)
+	changedEvent:Fire(context.Player, context.Id)
 	return true
 end
 

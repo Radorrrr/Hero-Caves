@@ -1,6 +1,8 @@
 -- Minimal deterministic Roblox API mock; not a Studio/physics/network emulator.
 local localPlayer
 local isStudio=true
+local warnings={}
+local function warn(message) table.insert(warnings,tostring(message)) end
 
 local clock=0
 local function time() return clock end
@@ -125,11 +127,23 @@ instanceMt.__index=function(o,k)
  return nil
 end
 instanceMt.__newindex=function(o,k,v) o.Data[k]=v end
+-- Roblox copies Lua tables across BindableEvent arguments; Instances retain identity.
+-- Preserve mock userdata (Instance/Vector3/CFrame metatables), copy plain tables.
+local function copyBindableValue(value, seen)
+ if type(value)~='table' or getmetatable(value)~=nil then return value end
+ if seen[value] then return seen[value] end
+ local copy={};seen[value]=copy
+ for key,item in value do copy[copyBindableValue(key,seen)]=copyBindableValue(item,seen) end
+ return copy
+end
 function Instance.new(class)
  
  local o=setmetatable({Data={ClassName=class},attrs={},AttributeSignals={},destroyed=false},instanceMt)
  if class=='BindableEvent' then
-  o.Event=signal(); function o:Fire(...) self.Event:Fire(...) end
+  o.Event=signal(); function o:Fire(...)
+   local args=copyBindableValue(table.pack(...),{})
+   self.Event:Fire(table.unpack(args,1,args.n))
+  end
  elseif class=='RemoteEvent' then
   o.OnServerEvent=signal(); o.OnClientEvent=signal(); o.Responses={}; o.Requests={}
   function o:FireClient(player,...) table.insert(self.Responses,{player,...}); if player.IsLocal then self.OnClientEvent:Fire(...) end end

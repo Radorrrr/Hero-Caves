@@ -62,8 +62,10 @@ once every 0.2 seconds and does not change combat or revive a dead character.
 ## Phase 6B combat architecture
 
 `IslandService` remains the ownership authority. Its server-only **Claimed**
-and **Releasing** signals connect to `CombatContextService.StartCombat(player,
-island)` and `StopCombat(player, expectedIsland)`. `GetContext(player)` exposes
+and **Releasing** signals pass `(player, island.Model)`. The combat listener
+resolves the actual ownership record from IslandService and then calls
+`CombatContextService.StartCombat(player, island)`; release matches the stored
+context's Model before `StopCombat(player, expectedIsland)`. `GetContext(player)` exposes
 the player's active context to other server services. Duplicate starts are
 idempotent; invalid/non-owner starts are rejected.
 
@@ -157,8 +159,8 @@ was made in Phase 6B. Defaults remain:
 All level costs grow by 1.12; the configured maximum level is 200. Enemy base
 HP is 20, HP growth 1.18, every fifth wave a boss with HP x10 and 30 seconds
 to defeat it. Wave 1–4 HP: 20, 24, 28, 33; Wave 5 boss HP: 330.
-Base gold is 5, grows by 1.15 each wave; bosses multiply the rounded normal
-reward by 5. Existing rounding is preserved (Wave 5 boss reward: 44).
+Base gold is 5, grows by 1.15 each wave; bosses multiply this value by 5
+before rounding. Existing rounding is preserved (Wave 5 boss reward: 44).
 
 Knight's sword uses 0.28s wind-up, 0.16s swing, impact at 0.44s, 0.14s
 follow-through and 0.32s recovery. Each attack applies one authoritative impact.
@@ -327,7 +329,7 @@ from the caller's real progression.
 
 ## Automated verification and limits
 
-`tests/phase6b.py` loads the actual current modules and executes 35 deterministic
+`tests/phase6b.py` loads the actual current modules and executes 38 deterministic
 Luau scenarios against `tests/roblox_mock.luau`. Existing progression/security
 cases are stored in `tests/progression_regressions.json`. Run with Python 3 and
 a Luau CLI:
@@ -338,7 +340,7 @@ luau-compile src/shared/*.lua src/server/*.lua src/server/Services/*.lua src/ser
 rojo sourcemap default.project.json --output /tmp/idle-hero-simulator-sourcemap.json
 ```
 
-The 35 scenarios passed during Phase 6B implementation: neutral Hub, claim
+The 38 scenarios passed during Phase 6B implementation: neutral Hub, claim
 startup/races, marker placement, single-player waves/bosses, two-player damage
 and projectile isolation, real attack speeds/upgrades, independent deadlines
 and rewards, gold caps/duplicate death notifications, purchases before/after
@@ -355,3 +357,66 @@ procedures above. Projectile visuals remain server-replicated placeholders;
 client VFX, streaming behavior and production-scale performance are unverified.
 Ownership/progression is session-only, at most six players can own islands,
 and the first valid claimant wins. No Phase 6C work has begun.
+
+
+## Phase 6B Studio runtime integration correction
+
+The original claim event sent the Lua `island` ownership table. Roblox copies
+Lua tables passed through BindableEvent. Its receiver therefore saw a different
+table, and `IslandService.GetIsland(player) ~= island` caused StartCombat to
+return before creating a context. Claim labels/caves still worked, but there
+was no enemy/Knight/wave or active state for the client. The previous mock passed
+the same table reference; its 35 tests missed this engine behavior.
+
+Claim/release events now pass the Player and island Model Instances, which keep
+identity across events. Listeners resolve the private ownership record instead
+of trusting a copied table. Enemy Changed similarly passes Player/ContextId.
+Enemy Defeated passes Player/ContextId/sequence; its reward is stored privately
+in that context and consumed once by EconomyService. No island, enemy or context
+state table crosses these production BindableEvents. This also fixes projectile
+cancellation and reward checks that previously depended on table identity.
+
+Startup order was already correct and remains Economy -> Progression -> Combat
+listeners/reconciliation -> Studio debug -> IslandService/touch handlers. Start
+is idempotent and reconciles existing ownership. Marker/default Knight validation
+reports exact failures; unexpected startup errors clean up partial combat and
+restore inactive state. Registry changes publish HasCombatArea/TotalDPS; successful
+physical startup explicitly refreshes progression again. The existing client
+attribute listener changes its claim prompt without trusting client ownership.
+
+Studio-only Output diagnostics show: listeners ready, claim confirmed/received,
+marker/default Knight validation, context ID/Wave 1 startup, and spawned enemy/
+Knight with active state/TotalDPS. Failure logs start with
+`[CombatContext] START FAILED:` and include the precise reason/traceback.
+These diagnostics do not run each frame/attack and are absent outside Studio.
+
+The corrected mock copies plain tables while preserving mock Instance/value
+identities. Before the production fix, 33 of the existing 35 scenarios failed
+with this semantics change, reproducing the missing claim startup. All existing
+cases now pass. Three new cases test the actual two-player Touched -> real module
+BindableEvent path -> ownership/context lookup -> enemy/Knight -> UI/DPS, stable
+enemy notifications/private one-shot rewards, and marker/error rollback plus
+startup reconciliation. The probe explicitly verifies that a delivered Lua table
+is a copy while its nested Model/Player Instances are the same references.
+
+For the real Studio retest, synchronize **all** server/client/shared modules and
+restart the session. Start two clients with StudioTesting disabled. A claims
+Island 1: Output must show the complete diagnostic chain, Island1.Combat must
+contain Knight and a Wave 1 enemy, HasCombatArea must be true and TotalDPS about
+15.3846. The claim prompt changes; B still has no context/DPS. B then claims
+Island 2 and gets its separate Wave 1/Knight/enemy. Continue with the full
+single/two-player tests above, including owner-only gold/projectiles and release.
+The cloud regression is not a completed Studio retest; rendering/network/physics
+confirmation still requires Studio. Phase 6C remains unstarted.
+
+
+To verify the event boundary in the **real Roblox engine**, paste
+`tests/studio_claim_integration.lua` into the **server** Command Bar after starting
+the two-client session and before claiming. With default level-1 Knight and
+StudioTesting disabled, it first checks real table-copy/Instance-identity semantics,
+then observes the actual claim event (without forcing claims) and asserts each
+player's authoritative context, Wave 1 enemy, Knight positions and active/DPS
+attributes. Claim islands within 120 seconds; successful Output ends with
+`[Studio regression] PASS: both actual claims started separate combat`.
+This script is not mapped by Rojo and has not been executed here; it is a Studio
+regression procedure, separate from the 38 completed cloud simulations.

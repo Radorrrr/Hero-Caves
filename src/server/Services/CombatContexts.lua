@@ -41,7 +41,7 @@ function CombatContexts.Create(player, island)
 		Id = folder:GetAttribute("ContextId"), Folder = folder,
 		EnemyFolder = child("Enemies"), HeroFolder = child("Heroes"),
 		CurrentWave = 0, CurrentEnemy = nil, EnemySequence = 0,
-		Heroes = {}, HeroesById = {}, HeroConnections = {}}
+		Heroes = {}, HeroesById = {}, HeroConnections = {}, PendingRewards = {}}
 	contexts[player] = context
 	changed:Fire(player)
 	return context
