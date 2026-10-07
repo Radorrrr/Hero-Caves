@@ -217,7 +217,8 @@ damage rises from 20 to 22 and the next cost is 11. Combat reads the owner's
 current server-calculated damage at the sword impact. It remains synchronized
 with the existing animation.
 
-The client fires `HeroCavesRemotes.BuyHeroLevel(heroId)`.
+The HUD now fires `HeroCavesRemotes.BuyHeroLevels(heroId, mode)`.
+The original `BuyHeroLevel(heroId)` remains supported as x1.
 The server rejects extra arguments, validates the hero ID and rate-limits all
 purchase requests together per player to one every 0.25s. It
 calculates the real cost, checks its private ledger, deducts gold and increments
@@ -467,3 +468,106 @@ New source modules: `src/client/GoldPopup.lua`,
 `src/client/CombatDebugPanel.lua`, `src/server/Services/CombatDebugState.lua`,
 and `src/server/Services/CombatDebugService.lua`.
 Phase 6, persistence, extra heroes and final art remain outside this change.
+
+
+## Bulk leveling and per-hero Studio reset (before Phase 6)
+
+The compact **BUY MODE** button cycles x1 -> x10 -> x25 -> x100 -> MAX -> NEXT
+-> x1. Selecting a mode is client UI state. The adjacent purchase button and
+preview show the currently affordable level count and its exact gold cost;
+NEXT also shows the target milestone. Success feedback reports the actual
+server-purchased count/cost. Selecting an unowned hero still offers BUY HERO.
+
+`ProgressionMath.GetHeroLevelCost` remains the only per-level cost formula.
+`GetBulkLevelCost` sums each individual rounded cost, bounded by the hero's
+configured MaxLevel. `GetLevelPurchaseQuote` walks the requested consecutive
+levels and stops before the next price exceeds remaining gold. Thus x25 can
+buy 17 levels rather than reject the purchase; MAX walks up to MaxLevel and
+buys the exact affordable prefix. The server spends the combined cost once,
+increments level once and refreshes stats/milestone availability once. No
+upgrade is bought automatically, and no per-level remote events are fired.
+
+`GetNextMilestoneTarget` chooses the smallest configured milestone Level strictly
+above the current level, regardless of milestone order. NEXT buys toward that
+level, partially if needed, then uses that same target on another purchase until
+reached. For the current configs, Level 10 targets 25; 17 targets 25; 25 targets
+50; 72 targets 100; 149 targets 150. **After the highest configured milestone,
+NEXT uses x1**. All modes respect the existing intentional MaxLevel=200; the
+logic reads that config rather than treating the highest milestone as a level cap.
+
+Each `Player.HeroProgression.<HeroId>.PurchaseModes.<Mode>` folder replicates
+server-calculated `Count`, `Cost`, `Requested` and `Target` quotes. They refresh
+on balance/progression changes, not per frame. The client only formats these
+quotes; it sends exactly a hero ID and one supported mode string. The server
+recalculates from private level, ownership and gold at request time, so a stale
+quote cannot select a price/final level. Invalid types, extra arguments, unknown
+heroes/modes, unowned heroes, zero affordable levels and MaxLevel are rejected.
+Bulk/legacy single-level/shop/upgrade requests share the existing 0.25s cooldown.
+
+The Studio debug panel now has **RESET HERO** under each hero. It resets the
+hero belonging to the displayed shared-scene owner to Level 1, clears only that
+hero's purchased upgrades, and preserves its owned/unowned status. In particular,
+owned Archer/Mage remain owned. Gold, wave, enemy HP/deadline and other hero
+levels/upgrades are unchanged. Effects originating from the reset hero are
+removed, including global damage, target-specific damage, speed, boss damage
+and gold bonuses. Effects still purchased by other heroes continue to apply.
+All hero stats, Total DPS, GoldMultiplier, milestone states and quotes refresh.
+
+HeroService cancels only that hero's pending windup/impact/projectile and returns
+it to idle without destroying the model. If attacks are enabled, its next server
+update begins a fresh windup; pause/off selections still apply. Start/Stop clean
+up the reset listener and retain a single combat dispatcher. Reset controls use
+the existing Studio-only remote, exact `ResetHero, heroId` payload, rechecked
+IsStudio AND Enabled gate and 0.15s control rate limit. Clients cannot pass a
+player, price, level, upgrade set or stat. As with the other debug controls,
+any local Studio client may operate the shared scene owner's controls.
+
+### Exact Studio procedure
+
+1. Pull/sync the latest source, set GameConfig.StudioTesting to the following,
+   and restart Play:
+
+   ```lua
+   Enabled = true,
+   StartingGold = 1000000000000,
+   StartingHeroLevels = {Knight = 150, Archer = 150, Mage = 150},
+   StartingOwnedHeroes = {Archer = true, Mage = true},
+   ```
+
+2. Pause ALL attacks in the debug panel. Buy Archer's Rallying Volley and Quick
+   Draw, Mage's Enchanted Blade and Alchemical Fortune, and Knight's Treasure
+   Hunter. Note gold, wave, enemy HP and all hero levels/stats.
+3. Click RESET HERO for Archer. It stays owned at Level 1, its upgrades become
+   Locked, its interval returns to 0.7s, and the Archer global damage bonus
+   disappears. Knight/Mage levels and purchases, gold, wave and HP stay unchanged.
+   Reset Mage: its Knight bonus disappears and Gold Multiplier drops from x1.56
+   to x1.25. Reset Knight: multiplier returns to x1. Paused attacks remain paused.
+4. On a Level-1 hero, cycle through all six modes and back to x1. With enough
+   gold, x10 buys 10, x25 buys 25 and x100 buys 100 (or fewer at the level cap).
+   Reset between tests. NEXT at Knight Level 1 reaches 10, then 25, with the
+   milestone Available but unpurchased. MAX reaches the configured cap when
+   fully funded. At the cap, the purchase button shows Maximum level.
+5. For an exact partial-purchase test, stop Play and set StartingGold=492,
+   all StartingHeroLevels=1, and StartingOwnedHeroes={Archer=false,Mage=false}.
+   Restart and pause ALL **before the first hit** (restart if a reward arrived).
+   Select Knight x25: preview should show +17 Levels / 491 Gold. Buy: Level 18
+   and 1 Gold. Buying again cannot make the balance negative. For a separate
+   NEXT test, restart at Knight Level 17 with a small balance: partial purchase
+   stays below 25 and the preview continues targeting 25.
+6. Resume attacks; reset Archer while an arrow is in flight. It remains visible,
+   the old projectile disappears, and subsequent attacks begin fresh. Repeat
+   resets and pause/resume without duplicate hits. Test boss progression and
+   the normal shop as before. Restore Enabled=false: no debug/reset panel or
+   control remote should exist, while normal bulk leveling remains available.
+
+### Validation
+
+37 standalone Luau simulations passed, executing real source modules with mocked
+Roblox APIs: all previous combat/shop/wave/boss/debug/gold regressions, exact
+x1/x10/x25/x100 costs and counts, partial x25, exact MAX affordability, all six
+requested NEXT starting levels, partial/custom-config/post-final NEXT, no
+automatic upgrades, private-state/payload/rate-limit protection, reset isolation
+and effect removal, preserved ownership/gold/wave/enemy, UI mode cycling,
+reset projectile cancellation and no duplicate dispatcher. All Luau compiles,
+Rojo sourcemap and relative require paths are checked. Actual rendering and
+replication must still be verified in Roblox Studio. Phase 6 is not included.

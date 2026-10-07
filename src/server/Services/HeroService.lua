@@ -17,6 +17,7 @@ local heroesById = {}
 local connection = nil
 local heroFolder = nil
 local debugConnection = nil
+local resetConnection = nil
 local rigFactories = {Knight = KnightRig.new, Ranged = RangedRig.new}
 
 local function interpolate(from, to, progress)
@@ -170,6 +171,13 @@ function HeroService.Start()
 	if connection then
 		return
 	end
+	resetConnection = ProgressionService.HeroReset:Connect(function(player, heroId)
+		local hero = heroesById[heroId]
+		if hero and hero.Owner == player then
+			idle(hero)
+			hero.NextAttackAt = time() -- Resume with a fresh windup, never a stale impact.
+		end
+	end)
 	debugConnection = CombatDebugState.Changed:Connect(function()
 		for _, hero in activeHeroes do
 			if not CombatDebugState.IsHeroEnabled(hero.Id) then idle(hero) end
@@ -190,6 +198,7 @@ function HeroService.Start()
 end
 
 function HeroService.Stop()
+	if resetConnection then resetConnection:Disconnect(); resetConnection = nil end
 	if debugConnection then debugConnection:Disconnect(); debugConnection = nil end
 	if connection then
 		connection:Disconnect()

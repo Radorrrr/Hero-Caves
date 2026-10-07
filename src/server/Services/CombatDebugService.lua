@@ -73,6 +73,8 @@ function CombatDebugService.Start()
 			State.SetPaused(id)
 		elseif action == "SetHeroEnabled" and count == 3 then
 			State.SetHeroEnabled(id, value)
+		elseif action == "ResetHero" and count == 2 then
+			ProgressionService.ResetHero(ProgressionService.GetCombatOwner(), id)
 		elseif action == "ResetEnemyHP" and count == 1 then
 			EnemyService.ResetHealth()
 		end

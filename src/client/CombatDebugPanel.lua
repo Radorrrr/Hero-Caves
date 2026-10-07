@@ -14,7 +14,7 @@ function CombatDebugPanel.Start(gui)
 	panel.AnchorPoint = Vector2.new(1, 0)
 	panel.Position = UDim2.new(1, -16, 0, 84)
 	panel.Size = UDim2.new(0, 320, 0.8, -84)
-	panel.CanvasSize = UDim2.fromOffset(0, 665)
+	panel.CanvasSize = UDim2.fromOffset(0, 780)
 	panel.ScrollBarThickness = 6
 	panel.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
 	panel.BorderSizePixel = 0
@@ -52,9 +52,12 @@ function CombatDebugPanel.Start(gui)
 	pause.Activated:Connect(function() request("SetPaused", not data:GetAttribute("Paused")) end)
 	reset.Activated:Connect(function() request("ResetEnemyHP") end)
 	for index, id in HeroConfig.HeroOrder do
-		local y = 212 + (index - 1) * 148
+		local y = 212 + (index - 1) * 186
 		labels[id] = item("TextLabel", id .. "Stats", y, 106)
 		buttons[id] = item("TextButton", id .. "Toggle", y + 108, 32)
+		local resetHero = item("TextButton", id .. "Reset", y + 146, 32)
+		resetHero.Text = "RESET HERO · " .. id
+		resetHero.Activated:Connect(function() request("ResetHero", id) end)
 		local snapshot = data:WaitForChild(id)
 		buttons[id].Activated:Connect(function()
 			request("SetHeroEnabled", id, not snapshot:GetAttribute("Selected"))

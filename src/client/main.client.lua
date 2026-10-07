@@ -10,11 +10,13 @@ local progression = player:WaitForChild("HeroProgression")
 local heroSnapshots = {}
 for _, id in HeroConfig.HeroOrder do
 	local data = progression:WaitForChild(id)
-	heroSnapshots[id] = {Data = data, Upgrades = data:WaitForChild("Upgrades")}
+	heroSnapshots[id] = {Data = data, Upgrades = data:WaitForChild("Upgrades"), Quotes = data:WaitForChild("PurchaseModes")}
 end
 local heroId = HeroConfig.StartingHeroId
 local remotes = ReplicatedStorage:WaitForChild("HeroCavesRemotes")
-local buyLevel = remotes:WaitForChild("BuyHeroLevel")
+local buyLevel = remotes:WaitForChild("BuyHeroLevels")
+local purchaseModes = {"x1", "x10", "x25", "x100", "MAX", "NEXT"}
+local modeIndex = 1
 local buyHero = remotes:WaitForChild("BuyHero")
 local buyUpgrade = remotes:WaitForChild("BuyUpgrade")
 
@@ -32,7 +34,7 @@ panel.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
 panel.BorderSizePixel = 0
 panel.Parent = gui
 local constraint = Instance.new("UISizeConstraint")
-constraint.MinSize = Vector2.new(300, 590)
+constraint.MinSize = Vector2.new(300, 610)
 constraint.MaxSize = Vector2.new(360, 760)
 constraint.Parent = panel
 local corner = Instance.new("UICorner")
@@ -85,24 +87,32 @@ local levelLabel = label("Level", 141, 24, 17)
 local damageLabel = label("Damage", 169, 24, 17)
 local speedLabel = label("AttackSpeed", 197, 22, 15)
 local dpsLabel = label("DPS", 223, 22, 15)
-local nextCostLabel = label("NextLevelCost", 249, 22, 14)
-local bonusLabel = label("GoldMultiplier", 275, 22, 14)
+local nextCostLabel = label("NextLevelCost", 249, 42, 14)
+local bonusLabel = label("GoldMultiplier", 295, 22, 14)
 local totalLabel = label("TotalDPS", 0, 60, 22, gui)
 totalLabel.AnchorPoint = Vector2.new(1, 0)
 totalLabel.Position = UDim2.new(1, -16, 0, 12)
 totalLabel.Size = UDim2.fromOffset(200, 60)
 totalLabel.TextXAlignment = Enum.TextXAlignment.Right
-local levelButton = button("LevelUp", 304)
-local feedback = label("PurchaseResult", 344, 24, 14)
+local levelButton = button("LevelUp", 324)
+local modeButton = button("BuyMode", 324)
+modeButton.Size = UDim2.new(0, 125, 0, 36)
+modeButton.TextSize = 13
+modeButton.BackgroundColor3 = Color3.fromRGB(55, 95, 145)
+levelButton.Position = UDim2.fromOffset(147, 324)
+levelButton.Size = UDim2.new(1, -163, 0, 36)
+levelButton.TextSize = 13
+levelButton.TextWrapped = true
+local feedback = label("PurchaseResult", 364, 24, 14)
 feedback.Text = ""
-local ownerLabel = label("CombatOwner", 373, 48, 13)
+local ownerLabel = label("CombatOwner", 393, 48, 13)
 ownerLabel.TextColor3 = Color3.fromRGB(180, 190, 210)
-local milestonesTitle = label("MilestonesTitle", 428, 24, 17)
+local milestonesTitle = label("MilestonesTitle", 448, 24, 17)
 milestonesTitle.Text = "Milestone upgrades"
 local list = Instance.new("ScrollingFrame")
 list.Name = "Milestones"
-list.Position = UDim2.fromOffset(8, 460)
-list.Size = UDim2.new(1, -16, 1, -472)
+list.Position = UDim2.fromOffset(8, 480)
+list.Size = UDim2.new(1, -16, 1, -492)
 list.BackgroundTransparency = 1
 list.BorderSizePixel = 0
 list.ScrollBarThickness = 6
@@ -171,14 +181,24 @@ local function render()
 	dpsLabel.Text = owned and ("DPS: " .. NumberFormatter.Format(data:GetAttribute("DPS"))) or ""
 	nextCostLabel.Text = owned and (maxLevel and "Next Level: Maximum level" or ("Next Level: " .. NumberFormatter.Format(cost) .. " Gold")) or ""
 	totalLabel.Text = "Total DPS\n" .. NumberFormatter.Format(player:GetAttribute("TotalDPS"))
-	local affordable = gold ~= nil and (owned and cost ~= nil and not maxLevel and gold >= cost
+	local mode = purchaseModes[modeIndex]
+	local quote = snapshot.Quotes:FindFirstChild(mode)
+	local count = quote and quote:GetAttribute("Count") or 0
+	local bulkCost = quote and quote:GetAttribute("Cost") or 0
+	local target = quote and quote:GetAttribute("Target") or 0
+	modeButton.Text = "BUY MODE: " .. mode
+	local affordable = gold ~= nil and (owned and count > 0 and not maxLevel
 		or not owned and unlockCost ~= nil and gold >= unlockCost)
 	title.Text = string.upper(definition.Name) .. " · " .. (owned and "OWNED" or (affordable and "AFFORDABLE" or "NOT AFFORDABLE"))
 	levelLabel.Text = owned and ("Level " .. NumberFormatter.Format(level)) or "Not owned — buy this hero first"
 	damageLabel.Text = owned and ("Damage: " .. NumberFormatter.Format(damage))
 		or ("Unlock: " .. NumberFormatter.Format(unlockCost) .. " Gold")
+	if owned and not maxLevel then
+		nextCostLabel.Text = (mode == "NEXT" and (target > 0 and ("Next Milestone: Level " .. tostring(target)) or "NEXT: x1 after final milestone")
+			or ("Buy " .. mode)) .. " · +" .. tostring(count) .. " Levels · " .. NumberFormatter.Format(bulkCost) .. " Gold"
+	end
 	levelButton.Text = not owned and ("BUY HERO — " .. NumberFormatter.Format(unlockCost) .. " GOLD")
-		or (maxLevel and "Maximum level" or ("Level Up — " .. NumberFormatter.Format(cost) .. " Gold"))
+		or (maxLevel and "Maximum level" or ("Level Up +" .. tostring(count) .. "\n" .. NumberFormatter.Format(bulkCost) .. " Gold"))
 	styleButton(levelButton, affordable)
 	ownerLabel.Text = player:GetAttribute("IsHeroCombatOwner")
 		and "The shared scene uses your owned heroes, levels and upgrades."
@@ -221,7 +241,14 @@ end
 for _, snapshot in heroSnapshots do
 	snapshot.Data.AttributeChanged:Connect(render)
 	snapshot.Upgrades.AttributeChanged:Connect(render)
+	for _, mode in purchaseModes do
+		snapshot.Quotes:WaitForChild(mode).AttributeChanged:Connect(render)
+	end
 end
+modeButton.Activated:Connect(function()
+	modeIndex = modeIndex % #purchaseModes + 1
+	render()
+end)
 levelButton.Activated:Connect(function()
 	local data = heroSnapshots[heroId].Data
 	local gold = player:GetAttribute("Gold")
@@ -230,20 +257,25 @@ levelButton.Activated:Connect(function()
 		local price = data:GetAttribute("UnlockCost")
 		if price ~= nil and gold >= price then request(buyHero, heroId) end
 	else
-		local cost = data:GetAttribute("NextLevelCost")
-		if cost ~= nil and gold >= cost and not data:GetAttribute("AtMaxLevel") then request(buyLevel, heroId) end
+		local quote = heroSnapshots[heroId].Quotes[purchaseModes[modeIndex]]
+		if (quote:GetAttribute("Count") or 0) > 0 and not data:GetAttribute("AtMaxLevel") then
+			request(buyLevel, heroId, purchaseModes[modeIndex])
+		end
 	end
 end)
 local messages = {
 	HeroPurchased = "Hero unlocked!", LevelPurchased = "Hero leveled up!",
 	UpgradePurchased = "Upgrade purchased!", NotEnoughGold = "Not enough gold.",
 	MaxLevel = "Maximum prototype level reached.", InvalidPlayer = "Progression is not available.",
-	InvalidHero = "Unknown hero.", InvalidUpgrade = "Unknown upgrade.",
+	InvalidMode = "Unknown purchase mode.", InvalidHero = "Unknown hero.", InvalidUpgrade = "Unknown upgrade.",
 	Locked = "Required level not reached.", AlreadyPurchased = "Already purchased.",
 	AlreadyOwned = "Hero already owned.", NotOwned = "Buy this hero first.",
 }
-local function purchaseResult(success, reason)
+local function purchaseResult(success, reason, count, cost)
 	feedback.Text = messages[reason] or "Purchase failed."
+	if success and reason == "LevelPurchased" and count then
+		feedback.Text = "+" .. tostring(count) .. " Levels · " .. NumberFormatter.Format(cost) .. " Gold spent"
+	end
 	feedback.TextColor3 = success and Color3.fromRGB(120, 230, 155) or Color3.fromRGB(245, 145, 135)
 	render()
 end

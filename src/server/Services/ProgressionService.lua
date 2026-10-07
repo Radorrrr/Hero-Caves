@@ -11,6 +11,10 @@ local CombatDebugState = require(script.Parent.CombatDebugState)
 
 local ProgressionService = {}
 local playerHeroes = {}
+local resetEvent = Instance.new("BindableEvent")
+ProgressionService.HeroReset = resetEvent.Event
+local goldConnections = {}
+local purchaseModes = {"x1", "x10", "x25", "x100", "MAX", "NEXT"}
 local lastPurchaseAt = {}
 local milestoneIndex = {}
 local heroIds = {}
@@ -99,6 +103,22 @@ function ProgressionService.GetUpgradeState(player, heroId, upgradeId)
 	return state.Level >= upgrade.Level and "Available" or "Locked"
 end
 
+local function publishPurchaseQuotes(player)
+	local heroes = playerHeroes[player]
+	if not heroes then return end
+	for heroId, state in heroes do
+		for _, mode in purchaseModes do
+			local quote = ProgressionMath.GetLevelPurchaseQuote(heroId, state.Level,
+				state.Owned and (EconomyService.GetGold(player) or 0) or 0, mode)
+			local folder = state.Replicated.PurchaseModes[mode]
+			folder:SetAttribute("Count", state.Owned and quote.Count or 0)
+			folder:SetAttribute("Cost", state.Owned and quote.Cost or 0)
+			folder:SetAttribute("Requested", quote.Requested)
+			folder:SetAttribute("Target", quote.Target)
+		end
+	end
+end
+
 local function publish(player)
 	local heroes = playerHeroes[player]
 	player:SetAttribute("GoldMultiplier", ProgressionService.GetGoldMultiplier(player))
@@ -134,6 +154,7 @@ local function publish(player)
 		player:SetAttribute(heroId .. "NextLevelCost", cost)
 		player:SetAttribute(heroId .. "AtMaxLevel", atMax)
 	end
+	publishPurchaseQuotes(player)
 	player:SetAttribute("TotalDPS", totalDPS)
 	player:SetAttribute("CombatStatsRevision", (player:GetAttribute("CombatStatsRevision") or 0) + 1)
 end
@@ -172,11 +193,22 @@ local function initializePlayer(player)
 		local upgrades = Instance.new("Folder")
 		upgrades.Name = "Upgrades"
 		upgrades.Parent = replicated
+		local quotes = Instance.new("Folder")
+		quotes.Name = "PurchaseModes"
+		for _, mode in purchaseModes do
+			local quote = Instance.new("Folder")
+			quote.Name = mode
+			quote.Parent = quotes
+		end
+		quotes.Parent = replicated
 		replicated.Parent = folder
 		heroes[heroId] = {Owned = owned, Level = owned and startingLevel(heroId) or 1,
 			Upgrades = {}, Replicated = replicated}
 	end
 	publish(player)
+	goldConnections[player] = player:GetAttributeChangedSignal("Gold"):Connect(function()
+		publishPurchaseQuotes(player)
+	end)
 	folder.Parent = player
 	player:SetAttribute("IsHeroCombatOwner", player == combatOwner)
 	if not combatOwner then
@@ -200,29 +232,39 @@ local function beginPurchase(player)
 	return true
 end
 
-function ProgressionService.BuyHeroLevel(player, heroId)
+function ProgressionService.BuyHeroLevels(player, heroId, mode)
 	local allowed, reason = beginPurchase(player)
-	if not allowed then
-		return false, reason
-	end
-	if not validId(heroId) or not getState(player, heroId) then
-		return false, "InvalidHero"
-	end
+	if not allowed then return false, reason end
+	if not validId(heroId) or not getState(player, heroId) then return false, "InvalidHero" end
+	if not ProgressionMath.IsPurchaseMode(mode) then return false, "InvalidMode" end
 	local state = getState(player, heroId)
-	if not state.Owned then
-		return false, "NotOwned"
-	end
-	if state.Level >= HeroConfig[heroId].MaxLevel then
-		return false, "MaxLevel"
-	end
-	local cost = ProgressionMath.GetHeroLevelCost(heroId, state.Level)
-	-- Neither purchase path yields: spend and state change are one transaction.
-	if not EconomyService.SpendGold(player, cost) then
+	if not state.Owned then return false, "NotOwned" end
+	if state.Level >= HeroConfig[heroId].MaxLevel then return false, "MaxLevel" end
+	local quote = ProgressionMath.GetLevelPurchaseQuote(heroId, state.Level, EconomyService.GetGold(player), mode)
+	if quote.Count == 0 or not EconomyService.SpendGold(player, quote.Cost) then
 		return false, "NotEnoughGold"
 	end
-	state.Level += 1
+	-- One transaction, one state update, one stat refresh; no per-level remote calls.
+	state.Level += quote.Count
 	publish(player)
-	return true, "LevelPurchased"
+	return true, "LevelPurchased", quote.Count, quote.Cost
+end
+
+function ProgressionService.BuyHeroLevel(player, heroId)
+	return ProgressionService.BuyHeroLevels(player, heroId, "x1")
+end
+
+function ProgressionService.ResetHero(player, heroId)
+	if not CombatDebugState.IsAvailable() or not playerHeroes[player] or player.Parent ~= Players
+		or not validId(heroId) then return false end
+	local state = getState(player, heroId)
+	if not state then return false end
+	state.Level = 1
+	table.clear(state.Upgrades)
+	-- Ownership, gold, other hero progress, wave and enemy are untouched.
+	resetEvent:Fire(player, heroId)
+	publish(player)
+	return true
 end
 
 function ProgressionService.BuyUpgrade(player, heroId, upgradeId)
@@ -285,6 +327,7 @@ function ProgressionService.Start()
 	EconomyService.SetGoldMultiplierProvider(ProgressionService.GetGoldMultiplier)
 	Players.PlayerAdded:Connect(initializePlayer)
 	Players.PlayerRemoving:Connect(function(player)
+		if goldConnections[player] then goldConnections[player]:Disconnect(); goldConnections[player] = nil end
 		playerHeroes[player] = nil
 		lastPurchaseAt[player] = nil
 		local folder = player:FindFirstChild("HeroProgression")
@@ -312,12 +355,13 @@ function ProgressionService.Start()
 		event.Parent = remotes
 		event.OnServerEvent:Connect(function(player, ...)
 			if select("#", ...) ~= argumentCount then return end
-			local success, reason = purchase(player, ...)
+			local success, reason, count, cost = purchase(player, ...)
 			if reason ~= "TooFast" then
-				event:FireClient(player, success, reason)
+				event:FireClient(player, success, reason, count, cost)
 			end
 		end)
 	end
+	remote("BuyHeroLevels", 2, ProgressionService.BuyHeroLevels)
 	remote("BuyHeroLevel", 1, ProgressionService.BuyHeroLevel)
 	remote("BuyHero", 1, ProgressionService.BuyHero)
 	remote("BuyUpgrade", 2, ProgressionService.BuyUpgrade)
